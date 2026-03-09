@@ -1,0 +1,161 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --atlas-bg: #0a0e1a;
+  --atlas-surface: rgba(15, 23, 42, 0.7);
+  --atlas-glass: rgba(30, 41, 70, 0.45);
+  --atlas-border: rgba(56, 189, 248, 0.12);
+  --atlas-glow-blue: rgba(56, 189, 248, 0.3);
+  --atlas-glow-cyan: rgba(34, 211, 238, 0.3);
+  --atlas-glow-amber: rgba(251, 191, 36, 0.3);
+  --atlas-accent-blue: #38bdf8;
+  --atlas-accent-cyan: #22d3ee;
+  --atlas-accent-amber: #fbbf24;
+  --atlas-text: #e2e8f0;
+  --atlas-text-muted: #94a3b8;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply text-foreground;
+    background: var(--atlas-bg);
+    color: var(--atlas-text);
+    font-family: 'Inter', system-ui, sans-serif;
+    overflow-x: hidden;
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+@keyframes arc-flow {
+  0% { stroke-dashoffset: 200; opacity: 0; }
+  30% { opacity: 1; }
+  100% { stroke-dashoffset: 0; opacity: 0.3; }
+}
+
+@keyframes drift {
+  0% { transform: translateX(0) translateY(0); }
+  50% { transform: translateX(15px) translateY(-8px); }
+  100% { transform: translateX(0) translateY(0); }
+}
+
+@keyframes radar-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes fade-up {
+  0% { opacity: 0; transform: translateY(20px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.atlas-glass {
+  background: var(--atlas-glass);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid var(--atlas-border);
+  box-shadow: 0 0 30px rgba(56, 189, 248, 0.05), inset 0 1px 0 rgba(255,255,255,0.05);
+}
+
+.atlas-glass-strong {
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  border: 1px solid rgba(56, 189, 248, 0.15);
+  box-shadow: 0 0 40px rgba(56, 189, 248, 0.08), 0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+.glow-node {
+  animation: pulse-glow 3s ease-in-out infinite;
+}
+
+.glow-node-fast {
+  animation: pulse-glow 1.5s ease-in-out infinite;
+}
+
+.arc-animate {
+  animation: arc-flow 3s ease-out infinite;
+  stroke-dasharray: 200;
+}
+
+.drift-slow {
+  animation: drift 20s ease-in-out infinite;
+}
+
+.fade-up {
+  animation: fade-up 0.6s ease-out forwards;
+}
+
+/* Leaflet overrides */
+.leaflet-container {
+  background: #0a0e1a !important;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+.leaflet-tile-pane {
+  filter: hue-rotate(198deg) saturate(1.15) brightness(0.46) contrast(1.2);
+}
+
+.leaflet-container .leaflet-tile-container {
+  background: #0d1529;
+}
+
+.atlas-map-tooltip.leaflet-tooltip {
+  background: rgba(15, 23, 42, 0.95) !important;
+  border: 1px solid rgba(56, 189, 248, 0.2) !important;
+  backdrop-filter: blur(20px);
+  border-radius: 10px !important;
+  padding: 8px 12px !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5) !important;
+  color: #e2e8f0;
+}
+
+.atlas-map-tooltip.leaflet-tooltip::before {
+  border-top-color: rgba(56, 189, 248, 0.2) !important;
+}
+
+.leaflet-zoom-box {
+  border-color: rgba(56, 189, 248, 0.5) !important;
+  background: rgba(56, 189, 248, 0.05) !important;
+}
+
+.leaflet-control-zoom {
+  border: 1px solid rgba(56, 189, 248, 0.15) !important;
+  border-radius: 10px !important;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4) !important;
+}
+
+.leaflet-control-zoom a {
+  background: rgba(15, 23, 42, 0.9) !important;
+  color: #94a3b8 !important;
+  border-bottom: 1px solid rgba(56, 189, 248, 0.1) !important;
+}
+
+.leaflet-control-zoom a:hover {
+  background: rgba(30, 41, 70, 0.95) !important;
+  color: #38bdf8 !important;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(56, 189, 248, 0.2);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(56, 189, 248, 0.35);
+}
