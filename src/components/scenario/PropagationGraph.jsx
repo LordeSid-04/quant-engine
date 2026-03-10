@@ -46,15 +46,9 @@ const NODE_DESCRIPTIONS = {
   },
 };
 
-const NODE_CORE_COLOR = "#46c8ff";
-const NODE_RING_COLOR = "#8891a3";
-const NODE_CENTER_COLOR = "#d81b60";
-const IMPACT_COLORS = {
-  critical: "#3de7ff",
-  high: "#46c8ff",
-  medium: "#6f8cff",
-  low: "#8292ba",
-};
+const NODE_CORE_COLOR = "#f59e0b";
+const NODE_RING_COLOR = "#ffffff";
+const NODE_CENTER_COLOR = "#fb923c";
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -222,7 +216,7 @@ export default function PropagationGraph({ isRunning, result, runId = 0 }) {
     scene.fog = new THREE.FogExp2(0x02040b, 0.022);
 
     const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 320);
-    camera.position.set(0, 0, 62);
+    camera.position.set(0, 0, 47);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -238,8 +232,8 @@ export default function PropagationGraph({ isRunning, result, runId = 0 }) {
     controls.rotateSpeed = 0.72;
     controls.zoomSpeed = 0.88;
     controls.panSpeed = 0.5;
-    controls.minDistance = 24;
-    controls.maxDistance = 145;
+    controls.minDistance = 18;
+    controls.maxDistance = 130;
     controls.autoRotate = isRunning && !result;
     controls.autoRotateSpeed = 0.34;
 
@@ -369,8 +363,7 @@ export default function PropagationGraph({ isRunning, result, runId = 0 }) {
               severity: toSyntheticSeverity(node.intensity),
             },
           ];
-      const dominantSeverity = String(displayImpacts[0]?.severity || toSyntheticSeverity(node.intensity)).toLowerCase();
-      const dominantColor = new THREE.Color(IMPACT_COLORS[dominantSeverity] || NODE_CORE_COLOR);
+      const dominantColor = new THREE.Color(NODE_CORE_COLOR);
       const isOriginNode = node.id === "origin";
 
       const radius = 0.2 + node.intensity * 0.05;
@@ -414,11 +407,11 @@ export default function PropagationGraph({ isRunning, result, runId = 0 }) {
       featureGroup.add(halo);
 
       const ring = new THREE.Mesh(
-        new THREE.TorusGeometry(radius + 0.33, 0.026, 10, 58),
+        new THREE.TorusGeometry(radius + 0.56, 0.042, 12, 66),
         new THREE.MeshBasicMaterial({
           color: new THREE.Color(NODE_RING_COLOR),
           transparent: true,
-          opacity: 0.78,
+          opacity: 0.98,
         }),
       );
       ring.position.copy(node.position);
@@ -592,7 +585,7 @@ export default function PropagationGraph({ isRunning, result, runId = 0 }) {
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Network className={`h-4 w-4 ${isRunning ? "animate-pulse text-zinc-100" : "text-zinc-500"}`} />
-            <h2 className="text-[13px] font-semibold uppercase tracking-[0.08em] text-zinc-100">3D Causal Propagation Network</h2>
+            <h2 className="text-[13px] font-semibold uppercase tracking-[0.08em] text-zinc-100">Causal Propagation Network</h2>
           </div>
           <div className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">
             nodes {nodeCount} | linked moves {Math.max(impactCount, nodeCount)}
@@ -636,14 +629,6 @@ export default function PropagationGraph({ isRunning, result, runId = 0 }) {
         ) : null}
 
         <div className="pointer-events-none absolute bottom-5 left-5 flex flex-wrap items-center gap-3 rounded-full border border-white/14 bg-black/48 px-3 py-2 text-[10px] uppercase tracking-[0.1em] text-zinc-300 backdrop-blur-sm">
-          <span className="inline-flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-[#46c8ff] shadow-[0_0_12px_rgba(70,200,255,0.85)]" />
-            Transmission
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-[#d81b60] shadow-[0_0_12px_rgba(216,27,96,0.85)]" />
-            Core Pulse
-          </span>
           {topImpact ? <span>Top Move {topImpact.asset}: {formatImpactValue(topImpact.impact, topImpact.unit)}</span> : null}
         </div>
 

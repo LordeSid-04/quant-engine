@@ -16,6 +16,7 @@ class ScenarioRunRequest(BaseModel):
     region: str
     severity: int = Field(..., ge=10, le=100)
     horizon: str
+    scenario_prompt: str | None = Field(default=None, max_length=2000)
 
 
 class ScenarioGraphNode(BaseModel):

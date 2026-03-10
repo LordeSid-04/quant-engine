@@ -1,17 +1,52 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { BrainCircuit, FileUp, Loader2, Send, Sparkles } from "lucide-react";
-import { runNewsNavigator } from "@/api/atlasClient";
+import { BrainCircuit, ChevronLeft, ChevronRight, FileUp, Loader2, Send, Sparkles } from "lucide-react";
+import { fetchNewsHeadlines, runNewsNavigator } from "@/api/atlasClient";
+import KeywordHighlighter from "@/components/worldpulse/KeywordHighlighter";
 
 const HORIZON_OPTIONS = [
-  { id: "daily", label: "Daily" },
-  { id: "weekly", label: "Weekly" },
-  { id: "monthly", label: "Monthly" },
+  { id: "daily", label: "Day" },
+  { id: "monthly", label: "Month" },
+  { id: "yearly", label: "Year" },
 ];
 
-function escapeRegex(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
+const CONTENT_TYPE_OPTIONS = [
+  { id: "macroeconomic_releases", label: "Macro Releases" },
+  { id: "central_bank_commentary", label: "Central Bank" },
+  { id: "geopolitical_developments", label: "Geopolitics" },
+  { id: "regulatory_announcements", label: "Regulatory" },
+  { id: "sector_specific_events", label: "Sector Events" },
+  { id: "fiscal_policy", label: "Fiscal Policy" },
+  { id: "trade_policy", label: "Trade Policy" },
+  { id: "market_volatility", label: "Market Volatility" },
+];
+
+const CONTENT_TYPE_LABELS = Object.fromEntries(CONTENT_TYPE_OPTIONS.map((item) => [item.id, item.label]));
+const SOURCE_TYPE_OPTIONS = [
+  { id: "wire", label: "Wire" },
+  { id: "institutional", label: "Institutional" },
+  { id: "publisher", label: "Publisher" },
+  { id: "rss", label: "RSS" },
+];
+const REGION_OPTIONS = [
+  { id: "", label: "All Regions" },
+  { id: "global", label: "Global" },
+  { id: "united_states", label: "United States" },
+  { id: "europe", label: "Europe" },
+  { id: "china", label: "China" },
+  { id: "japan", label: "Japan" },
+  { id: "middle_east", label: "Middle East" },
+  { id: "emerging_markets", label: "Emerging Markets" },
+  { id: "latin_america", label: "Latin America" },
+  { id: "asia_pacific", label: "Asia Pacific" },
+];
+const DEFAULT_FILTERS = {
+  country: "",
+  region: "",
+  search: "",
+  contentTypes: [],
+  sourceTypes: [],
+};
 
 function readAsText(file) {
   return new Promise((resolve, reject) => {
@@ -31,49 +66,24 @@ function readAsDataURL(file) {
   });
 }
 
-function HighlightedNarrative({ text, highlights }) {
-  const highlightMap = useMemo(() => {
-    const map = new Map();
-    (highlights || []).forEach((item) => {
-      const key = String(item.term || "").toLowerCase();
-      if (key && !map.has(key)) {
-        map.set(key, item);
-      }
-    });
-    return map;
-  }, [highlights]);
+function formatPublishedAt(value) {
+  if (!value) return "just now";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "just now";
+  return date.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
-  const tokens = useMemo(() => {
-    return Array.from(highlightMap.keys()).sort((a, b) => b.length - a.length);
-  }, [highlightMap]);
-
-  if (!tokens.length || !text) {
-    return <div className="text-sm leading-relaxed text-zinc-200 whitespace-pre-line">{text || "No response yet."}</div>;
-  }
-
-  const regex = new RegExp(`(${tokens.map((token) => escapeRegex(token)).join("|")})`, "gi");
-  const parts = String(text).split(regex);
-
-  return (
-    <div className="text-sm leading-relaxed text-zinc-200 whitespace-pre-line">
-      {parts.map((part, index) => {
-        const key = part.toLowerCase();
-        const meta = highlightMap.get(key);
-        if (!meta) {
-          return <span key={`${part}-${index}`}>{part}</span>;
-        }
-        return (
-          <span key={`${part}-${index}`} className="group relative mx-[1px] rounded-sm bg-emerald-300/18 px-[2px] text-zinc-100">
-            {part}
-            <span className="pointer-events-none absolute left-0 top-full z-30 mt-2 hidden w-[min(320px,70vw)] rounded-xl border border-emerald-200/35 bg-black/92 p-2.5 text-[11px] leading-relaxed text-zinc-200 shadow-[0_16px_34px_rgba(0,0,0,0.45)] group-hover:block">
-              <span className="block text-[10px] uppercase tracking-[0.1em] text-emerald-200/90">Why Highlighted</span>
-              <span>{meta.explanation}</span>
-            </span>
-          </span>
-        );
-      })}
-    </div>
-  );
+function formatRegionLabel(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  return raw
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function insightStateLabel(value) {
@@ -85,21 +95,70 @@ function insightStateLabel(value) {
   return "Stable";
 }
 
-export default function NewsNavigatorPanel() {
+function extractTerms(text) {
+  const words = String(text || "")
+    .toLowerCase()
+    .match(/[a-z][a-z0-9-]{2,}/g);
+  if (!words) return [];
+  const stop = new Set([
+    "the",
+    "and",
+    "for",
+    "with",
+    "from",
+    "that",
+    "this",
+    "into",
+    "while",
+    "over",
+    "under",
+    "about",
+    "after",
+    "before",
+    "market",
+    "global",
+    "today",
+  ]);
+  const unique = [];
+  const seen = new Set();
+  words.forEach((word) => {
+    if (stop.has(word) || seen.has(word)) return;
+    seen.add(word);
+    unique.push(word);
+  });
+  return unique;
+}
+
+function headlinePrompt(headline, horizon) {
+  return `Analyze this headline for ${horizon} horizon. Cover both local and global impact clearly: ${headline}`;
+}
+
+export default function NewsNavigatorPanel({ onHeadlineSelected = null, onThemeSelected = null, borderless = false }) {
   const [horizon, setHorizon] = useState("daily");
   const [prompt, setPrompt] = useState("");
   const [files, setFiles] = useState([]);
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [isRunning, setIsRunning] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
   const [selectedThemeId, setSelectedThemeId] = useState("");
+
+  const [headlines, setHeadlines] = useState([]);
+  const [headlineTotal, setHeadlineTotal] = useState(0);
+  const [headlinesLoading, setHeadlinesLoading] = useState(false);
+  const [headlinesError, setHeadlinesError] = useState("");
+  const [selectedHeadlineId, setSelectedHeadlineId] = useState("");
+  const [lastHeadlinesRefreshAt, setLastHeadlinesRefreshAt] = useState(null);
+  const [refreshTick, setRefreshTick] = useState(0);
+
+  const autoRunSignatureRef = useRef("");
 
   const handleFileChange = (event) => {
     const selected = Array.from(event.target.files || []).slice(0, 4);
     setFiles(selected);
   };
 
-  const buildAttachments = async () => {
+  const buildAttachments = useCallback(async () => {
     const rows = [];
     for (const file of files) {
       const mime = String(file.type || "application/octet-stream");
@@ -129,31 +188,192 @@ export default function NewsNavigatorPanel() {
       rows.push(base);
     }
     return rows;
+  }, [files]);
+
+  const filterSignature = useMemo(
+    () =>
+      JSON.stringify({
+        country: filters.country,
+        region: filters.region,
+        search: filters.search,
+        contentTypes: [...filters.contentTypes].sort(),
+        sourceTypes: [...filters.sourceTypes].sort(),
+      }),
+    [filters],
+  );
+
+  const hasActiveFilters = useMemo(
+    () =>
+      Boolean(
+        filters.country.trim() ||
+          filters.region.trim() ||
+          filters.search.trim() ||
+          filters.contentTypes.length ||
+          filters.sourceTypes.length,
+      ),
+    [filters],
+  );
+
+  const toggleFilterValue = (key, value) => {
+    setFilters((prev) => {
+      const current = Array.isArray(prev[key]) ? prev[key] : [];
+      const exists = current.includes(value);
+      return {
+        ...prev,
+        [key]: exists ? current.filter((item) => item !== value) : [...current, value],
+      };
+    });
   };
 
-  const handleRun = async () => {
-    const trimmedPrompt = prompt.trim();
-    if (!trimmedPrompt) {
-      setError("Enter a prompt to run News Navigator.");
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setRefreshTick((prev) => prev + 1);
+    }, 15000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const debounce = setTimeout(async () => {
+      setHeadlinesLoading(true);
+      setHeadlinesError("");
+      try {
+        const payload = await fetchNewsHeadlines(
+          {
+            horizon,
+            country: filters.country,
+            region: filters.region,
+            contentTypes: filters.contentTypes,
+            sourceTypes: filters.sourceTypes,
+            search: filters.search,
+            limit: 50,
+          },
+          { signal: controller.signal },
+        );
+        setHeadlines(Array.isArray(payload?.headlines) ? payload.headlines : []);
+        setHeadlineTotal(Number(payload?.total || 0));
+        setLastHeadlinesRefreshAt(new Date());
+      } catch (loadError) {
+        if (loadError?.name === "AbortError" || String(loadError?.message || "").toLowerCase().includes("aborted")) {
+          return;
+        }
+        setHeadlines([]);
+        setHeadlineTotal(0);
+        setHeadlinesError(loadError?.message || "Failed to load live headlines.");
+      } finally {
+        setHeadlinesLoading(false);
+      }
+    }, 160);
+
+    return () => {
+      controller.abort();
+      clearTimeout(debounce);
+    };
+  }, [filterSignature, horizon, refreshTick]);
+
+  useEffect(() => {
+    if (!headlines.length) {
+      setSelectedHeadlineId("");
       return;
     }
-
-    setIsRunning(true);
-    setError("");
-    try {
-      const attachments = await buildAttachments();
-      const payload = await runNewsNavigator({
-        prompt: trimmedPrompt,
-        horizon,
-        attachments,
-      });
-      setResult(payload);
-    } catch (runError) {
-      setError(runError?.message || "Failed to run News Navigator.");
-    } finally {
-      setIsRunning(false);
+    if (selectedHeadlineId && headlines.some((item) => item.article_id === selectedHeadlineId)) {
+      return;
     }
-  };
+    setSelectedHeadlineId(headlines[0].article_id);
+  }, [headlines, selectedHeadlineId]);
+
+  const selectedHeadline = useMemo(() => {
+    if (!headlines.length) return null;
+    if (!selectedHeadlineId) return headlines[0];
+    return headlines.find((item) => item.article_id === selectedHeadlineId) || headlines[0];
+  }, [headlines, selectedHeadlineId]);
+
+  const selectedHeadlineIndex = useMemo(
+    () => headlines.findIndex((item) => item.article_id === selectedHeadline?.article_id),
+    [headlines, selectedHeadline?.article_id],
+  );
+
+  const headlineHighlights = useMemo(() => {
+    if (!selectedHeadline?.title) return [];
+
+    const fromAnalysis = (result?.highlights || [])
+      .filter((item) => selectedHeadline.title.toLowerCase().includes(String(item.term || "").toLowerCase()))
+      .slice(0, 8);
+    if (fromAnalysis.length) {
+      return fromAnalysis;
+    }
+
+    return extractTerms(selectedHeadline.title)
+      .slice(0, 6)
+      .map((term) => ({
+        term,
+        explanation: `The term "${term}" is a high-signal keyword in the current macro headline.`,
+      }));
+  }, [result?.highlights, selectedHeadline?.title]);
+
+  const runAnalysis = useCallback(
+    async ({ auto = false } = {}) => {
+      const manualPrompt = prompt.trim();
+      const selectedTitle = selectedHeadline?.title || "";
+      const effectivePrompt = manualPrompt || headlinePrompt(selectedTitle, horizon);
+
+      if (!effectivePrompt.trim()) {
+        setError("Select a headline or enter a prompt to run News Navigator.");
+        return;
+      }
+
+      setIsRunning(true);
+      setError("");
+      try {
+        const attachments = await buildAttachments();
+        const payload = await runNewsNavigator({
+          prompt: effectivePrompt,
+          horizon,
+          attachments,
+          filters: {
+            country: filters.country,
+            region: filters.region,
+            content_types: filters.contentTypes,
+            source_types: filters.sourceTypes,
+            query: filters.search || selectedTitle,
+          },
+        });
+        setResult(payload);
+        setSelectedThemeId(payload?.theme_insights?.[0]?.theme_id || "");
+        if (selectedHeadline && typeof onHeadlineSelected === "function") {
+          onHeadlineSelected({ headline: selectedHeadline, analysis: payload });
+        }
+        if (selectedHeadline?.theme_id && typeof onThemeSelected === "function") {
+          onThemeSelected(selectedHeadline.theme_id, selectedHeadline, payload);
+        }
+      } catch (runError) {
+        if (!auto) {
+          setError(runError?.message || "Failed to run News Navigator.");
+        }
+      } finally {
+        setIsRunning(false);
+      }
+    },
+    [buildAttachments, filters, horizon, onHeadlineSelected, onThemeSelected, prompt, selectedHeadline],
+  );
+
+  useEffect(() => {
+    if (!selectedHeadline?.article_id) return;
+    if (selectedHeadline?.theme_id && typeof onThemeSelected === "function") {
+      onThemeSelected(selectedHeadline.theme_id, selectedHeadline, null);
+    }
+  }, [onThemeSelected, selectedHeadline]);
+
+  useEffect(() => {
+    if (!selectedHeadline?.article_id) return;
+    const signature = `${horizon}:${selectedHeadline.article_id}:${filterSignature}`;
+    if (autoRunSignatureRef.current === signature) return;
+    autoRunSignatureRef.current = signature;
+    const timer = setTimeout(() => {
+      runAnalysis({ auto: true });
+    }, 180);
+    return () => clearTimeout(timer);
+  }, [filterSignature, horizon, runAnalysis, selectedHeadline?.article_id]);
 
   useEffect(() => {
     const firstThemeId = result?.theme_insights?.[0]?.theme_id || "";
@@ -166,17 +386,28 @@ export default function NewsNavigatorPanel() {
     return insights.find((item) => item.theme_id === selectedThemeId) || insights[0];
   }, [result, selectedThemeId]);
 
+  const goHeadline = (direction) => {
+    if (!headlines.length) return;
+    const currentIndex = selectedHeadlineIndex >= 0 ? selectedHeadlineIndex : 0;
+    const nextIndex = (currentIndex + direction + headlines.length) % headlines.length;
+    setSelectedHeadlineId(headlines[nextIndex].article_id);
+  };
+
   return (
-    <section className="rounded-2xl border border-white/12 bg-black/38 p-4 shadow-[0_14px_36px_rgba(0,0,0,0.35)] backdrop-blur-xl sm:p-5">
+    <section
+      className={
+        borderless ? "space-y-4" : "rounded-2xl border border-white/12 bg-black/38 p-4 shadow-[0_14px_36px_rgba(0,0,0,0.35)] backdrop-blur-xl sm:p-5"
+      }
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/[0.06] px-3 py-1 text-[10px] uppercase tracking-[0.12em] text-zinc-300">
             <Sparkles className="h-3.5 w-3.5" />
-            Shazam For News
+            News Navigator + Critical Developments
           </div>
           <h3 className="mt-2 text-lg font-semibold text-zinc-100">News Navigator</h3>
           <p className="mt-1 text-xs text-zinc-400">
-            Ask about any macro topic, upload supporting files, and get source-backed intelligence with theme heat mapping.
+            Prompt the engine directly or select one of the top 50 trending global headlines.
           </p>
         </div>
 
@@ -199,13 +430,182 @@ export default function NewsNavigatorPanel() {
       </div>
 
       <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_250px]">
-        <div>
-          <textarea
-            value={prompt}
-            onChange={(event) => setPrompt(event.target.value)}
-            placeholder="Example: What does a hotter US inflation print imply for Fed path, US rates volatility, and spillover into Asia equities over the next week?"
-            className="atlas-focus-ring min-h-[118px] w-full resize-y rounded-xl border border-white/15 bg-black/35 p-3 text-sm leading-relaxed text-zinc-100 placeholder:text-zinc-500"
-          />
+        <div className="space-y-3">
+          <div className="rounded-xl border border-white/12 bg-black/30 p-3">
+            <div className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Prompt</div>
+            <textarea
+              value={prompt}
+              onChange={(event) => setPrompt(event.target.value)}
+              placeholder="Prompt with whatever you want. Example: Explain this headline's impact on local rates, FX, and global risk assets."
+              className="atlas-focus-ring mt-1.5 min-h-[108px] w-full resize-y rounded-xl border border-white/15 bg-black/35 p-3 text-sm leading-relaxed text-zinc-100 placeholder:text-zinc-500"
+            />
+            <div className="mt-2 text-[11px] text-zinc-400">
+              Prompt freely, or select a trending headline below and we will analyze it automatically.
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-white/12 bg-black/30 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.11em] text-zinc-500">Top 50 Global Headlines</div>
+                <div className="text-[11px] text-zinc-500">
+                  {headlineTotal} matches
+                  {hasActiveFilters ? " | filtered" : ""}
+                  {lastHeadlinesRefreshAt ? ` | Updated ${formatPublishedAt(lastHeadlinesRefreshAt.toISOString())}` : ""}
+                </div>
+              </div>
+              {headlinesLoading ? (
+                <span className="inline-flex items-center gap-1 text-[11px] text-zinc-400">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Refreshing
+                </span>
+              ) : (
+                <span className="text-[10px] uppercase tracking-[0.1em] text-zinc-500">Auto refresh 15s</span>
+              )}
+            </div>
+
+            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <input
+                value={filters.country}
+                onChange={(event) => setFilters((prev) => ({ ...prev, country: event.target.value }))}
+                placeholder="Country filter"
+                className="atlas-focus-ring rounded-lg border border-white/15 bg-black/35 px-2.5 py-2 text-xs text-zinc-200 placeholder:text-zinc-500"
+              />
+              <select
+                value={filters.region}
+                onChange={(event) => setFilters((prev) => ({ ...prev, region: event.target.value }))}
+                className="atlas-focus-ring rounded-lg border border-white/15 bg-black/35 px-2.5 py-2 text-xs text-zinc-200"
+              >
+                {REGION_OPTIONS.map((option) => (
+                  <option key={option.id || "all-regions"} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <input
+                value={filters.search}
+                onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))}
+                placeholder="Keyword filter"
+                className="atlas-focus-ring rounded-lg border border-white/15 bg-black/35 px-2.5 py-2 text-xs text-zinc-200 placeholder:text-zinc-500"
+              />
+            </div>
+
+            <div className="mt-2">
+              <div className="text-[10px] uppercase tracking-[0.1em] text-zinc-500">Content Type Filter</div>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {CONTENT_TYPE_OPTIONS.map((option) => {
+                  const active = filters.contentTypes.includes(option.id);
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => toggleFilterValue("contentTypes", option.id)}
+                      className={`atlas-focus-ring rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.08em] transition ${
+                        active
+                          ? "border-cyan-200/45 bg-cyan-300/18 text-cyan-100"
+                          : "border-white/18 bg-white/[0.03] text-zinc-300 hover:border-white/28 hover:text-zinc-100"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="mt-2">
+              <div className="text-[10px] uppercase tracking-[0.1em] text-zinc-500">Source Type Filter</div>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {SOURCE_TYPE_OPTIONS.map((option) => {
+                  const active = filters.sourceTypes.includes(option.id);
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => toggleFilterValue("sourceTypes", option.id)}
+                      className={`atlas-focus-ring rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.08em] transition ${
+                        active
+                          ? "border-cyan-200/45 bg-cyan-300/18 text-cyan-100"
+                          : "border-white/18 bg-white/[0.03] text-zinc-300 hover:border-white/28 hover:text-zinc-100"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+                {hasActiveFilters ? (
+                  <button
+                    type="button"
+                    onClick={() => setFilters({ ...DEFAULT_FILTERS })}
+                    className="atlas-focus-ring rounded-full border border-white/20 bg-white/[0.02] px-2.5 py-1 text-[10px] uppercase tracking-[0.08em] text-zinc-300 transition hover:border-white/35 hover:text-zinc-100"
+                  >
+                    Clear Filters
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => goHeadline(-1)}
+                disabled={headlines.length <= 1}
+                className="atlas-focus-ring inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-white/[0.05] text-zinc-200 transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Previous headline"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+
+              <select
+                value={selectedHeadline?.article_id || ""}
+                onChange={(event) => setSelectedHeadlineId(event.target.value)}
+                className="atlas-focus-ring min-w-[260px] flex-1 rounded-lg border border-white/15 bg-black/35 px-2.5 py-2 text-xs text-zinc-200"
+              >
+                {!headlines.length ? <option value="">No headlines matched current filters</option> : null}
+                {headlines.map((item, index) => (
+                  <option key={item.article_id} value={item.article_id}>
+                    {index + 1}. {item.title}
+                  </option>
+                ))}
+              </select>
+
+              <button
+                type="button"
+                onClick={() => goHeadline(1)}
+                disabled={headlines.length <= 1}
+                className="atlas-focus-ring inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-white/[0.05] text-zinc-200 transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Next headline"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+
+            {headlinesError ? <div className="mt-2 text-[11px] text-rose-300">{headlinesError}</div> : null}
+
+            <div className="mt-3 rounded-xl border border-white/12 bg-white/[0.04] p-3">
+              <div className="text-[10px] uppercase tracking-[0.12em] text-zinc-400">Hottest Headline</div>
+              <KeywordHighlighter
+                text={selectedHeadline?.title || "No headline available yet."}
+                highlights={headlineHighlights}
+                tooltipLabel="Headline keyword"
+                className="mt-1.5 text-xl font-bold leading-tight text-zinc-100 sm:text-2xl"
+              />
+              <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-zinc-500">
+                <span>{selectedHeadline?.source || "--"}</span>
+                <span>|</span>
+                <span>{formatPublishedAt(selectedHeadline?.published_at)}</span>
+                {selectedHeadline?.region ? (
+                  <>
+                    <span>|</span>
+                    <span>{formatRegionLabel(selectedHeadline.region)}</span>
+                  </>
+                ) : null}
+              </div>
+              <div className="mt-2 text-xs leading-relaxed text-zinc-300">
+                {selectedHeadline?.summary || "Waiting for reliable source summary..."}
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="space-y-3 rounded-xl border border-white/12 bg-black/28 p-3">
@@ -229,13 +629,18 @@ export default function NewsNavigatorPanel() {
 
           <button
             type="button"
-            onClick={handleRun}
+            onClick={() => runAnalysis({ auto: false })}
             disabled={isRunning}
             className="atlas-focus-ring inline-flex w-full items-center justify-center gap-2 rounded-lg border border-white/28 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.11em] text-zinc-950 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             {isRunning ? "Analyzing..." : "Run Navigator"}
           </button>
+
+          <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2.5 text-[11px] leading-relaxed text-zinc-300">
+            Responses include both <span className="font-semibold text-zinc-100">local</span> and{" "}
+            <span className="font-semibold text-zinc-100">global</span> impact channels when analysis mode is active.
+          </div>
         </div>
       </div>
 
@@ -253,23 +658,36 @@ export default function NewsNavigatorPanel() {
               <div className="mb-2 flex items-center gap-2 text-[10px] uppercase tracking-[0.11em] text-zinc-500">
                 <BrainCircuit className="h-3.5 w-3.5" />
                 Navigator Brief
+                <span className="ml-auto rounded-full border border-white/20 px-2 py-0.5 text-[9px] tracking-[0.1em] text-zinc-300">
+                  {result.analysis_mode === "informational" ? "Informational Mode" : "Intelligence Mode"}
+                </span>
               </div>
-              <HighlightedNarrative text={result.answer} highlights={result.highlights || []} />
+              <KeywordHighlighter
+                text={result.answer}
+                highlights={result.highlights || []}
+                tooltipLabel="Analysis keyword"
+                className="whitespace-pre-line text-sm leading-relaxed text-zinc-200"
+              />
             </div>
 
-            <div className="rounded-xl border border-white/12 bg-black/28 p-3">
-              <div className="text-[10px] uppercase tracking-[0.11em] text-zinc-500">Why This Matters</div>
-              <div className="mt-2 space-y-2 text-sm leading-relaxed text-zinc-200">
-                <p>{result.importance_analysis}</p>
-                <p>
-                  <span className="font-semibold text-zinc-100">Local impact:</span> {result.local_impact_analysis}
-                </p>
-                <p>
-                  <span className="font-semibold text-zinc-100">Global impact:</span> {result.global_impact_analysis}
-                </p>
-                <p>
-                  <span className="font-semibold text-zinc-100">Emerging theme view:</span> {result.emerging_theme_analysis}
-                </p>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="rounded-xl border border-white/12 bg-black/30 p-3">
+                <div className="text-[10px] uppercase tracking-[0.11em] text-zinc-500">Local Impact</div>
+                <KeywordHighlighter
+                  text={result.local_impact_analysis}
+                  highlights={result.highlights || []}
+                  tooltipLabel="Local signal keyword"
+                  className="mt-1 text-[12px] leading-relaxed text-zinc-200"
+                />
+              </div>
+              <div className="rounded-xl border border-white/12 bg-black/30 p-3">
+                <div className="text-[10px] uppercase tracking-[0.11em] text-zinc-500">Global Impact</div>
+                <KeywordHighlighter
+                  text={result.global_impact_analysis}
+                  highlights={result.highlights || []}
+                  tooltipLabel="Global signal keyword"
+                  className="mt-1 text-[12px] leading-relaxed text-zinc-200"
+                />
               </div>
             </div>
 
@@ -314,23 +732,50 @@ export default function NewsNavigatorPanel() {
               </div>
 
               <div className="rounded-xl border border-white/12 bg-black/28 p-3">
-                <div className="text-[10px] uppercase tracking-[0.11em] text-zinc-500">Verified Source Articles</div>
-                <div className="mt-2 max-h-[242px] space-y-2 overflow-auto pr-1">
-                  {(result.sources || []).map((source) => (
-                    <a
-                      key={source.article_id}
-                      href={source.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="block rounded-lg border border-white/10 bg-white/[0.04] p-2.5 transition hover:border-white/25 hover:bg-white/[0.07]"
-                    >
-                      <div className="text-[11px] text-zinc-100">{source.title}</div>
-                      <div className="mt-1 text-[10px] text-zinc-500">
-                        {source.source}
-                      </div>
-                      <div className="mt-1 text-[10px] text-zinc-400">{source.reason}</div>
-                    </a>
-                  ))}
+                <div className="text-[10px] uppercase tracking-[0.11em] text-zinc-500">Verified Source Articles (Live)</div>
+                <div className="mt-2 max-h-[260px] space-y-2 overflow-auto pr-1">
+                  {(result.sources || []).length ? (
+                    (result.sources || []).map((source) => (
+                      <a
+                        key={source.article_id}
+                        href={source.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block rounded-lg border border-white/10 bg-white/[0.04] p-2.5 transition hover:border-white/25 hover:bg-white/[0.07]"
+                      >
+                        <div className="text-[11px] text-zinc-100">{source.title}</div>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-zinc-500">
+                          <span>{source.source}</span>
+                          <span>|</span>
+                          <span>{formatPublishedAt(source.published_at)}</span>
+                          {source.region ? (
+                            <>
+                              <span>|</span>
+                              <span>{formatRegionLabel(source.region)}</span>
+                            </>
+                          ) : null}
+                          {source.source_type ? (
+                            <>
+                              <span>|</span>
+                              <span>{formatRegionLabel(source.source_type)}</span>
+                            </>
+                          ) : null}
+                        </div>
+                        {source.reason ? <div className="mt-1 text-[10px] text-zinc-400">{source.reason}</div> : null}
+                        {(source.content_types || []).length ? (
+                          <div className="mt-1.5 flex flex-wrap gap-1">
+                            {source.content_types.slice(0, 3).map((type) => (
+                              <span key={`${source.article_id}-${type}`} className="rounded-full border border-white/14 px-1.5 py-0.5 text-[9px] uppercase tracking-[0.08em] text-zinc-300">
+                                {CONTENT_TYPE_LABELS[type] || formatRegionLabel(type)}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
+                      </a>
+                    ))
+                  ) : (
+                    <div className="text-[11px] text-zinc-500">No reliable live source articles matched this selection.</div>
+                  )}
                 </div>
               </div>
             </div>

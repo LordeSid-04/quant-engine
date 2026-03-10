@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from "react";
-import { FlaskConical, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import ScenarioControls from "../components/scenario/ScenarioControls";
 import PropagationGraph from "../components/scenario/PropagationGraph";
 import SimulationLog from "../components/scenario/SimulationLog";
+import ScenarioThemeGraphBoard from "../components/scenario/ScenarioThemeGraphBoard";
 import { SectionHeading, SurfaceCard } from "@/components/premium/SurfaceCard";
 import {
   fetchDailyBriefing,
@@ -25,12 +26,27 @@ const DEFAULT_CONFIG = {
 
 const REGION_MAP = {
   us: "United States",
-  europe: "Europe",
+  europe: "Germany",
   china: "China",
-  middleeast: "Middle East",
-  em: "Emerging Markets",
+  middleeast: "Saudi Arabia",
+  em: "India",
   japan: "Japan",
 };
+
+const LEGACY_REGION_ALIAS = {
+  Europe: "Germany",
+  "Middle East": "Saudi Arabia",
+  "Emerging Markets": "India",
+};
+
+function normalizeRegionSelection(region, regionOptions = []) {
+  const raw = String(region || "").trim();
+  if (!raw) return "";
+  const mapped = LEGACY_REGION_ALIAS[raw] || raw;
+  if (regionOptions.includes(mapped)) return mapped;
+  const caseInsensitive = regionOptions.find((option) => option.toLowerCase() === mapped.toLowerCase());
+  return caseInsensitive || mapped;
+}
 
 const reveal = {
   initial: { opacity: 0, y: 12 },
@@ -60,6 +76,7 @@ export default function ScenarioLab({ embedded = false }) {
   const [regionFromUrl, setRegionFromUrl] = useState("");
   const [developmentIdFromUrl, setDevelopmentIdFromUrl] = useState("");
   const [presetDevelopment, setPresetDevelopment] = useState(null);
+  const [scenarioPrompt, setScenarioPrompt] = useState("");
 
   const { data: dailyBrief } = useQuery({
     queryKey: ["briefing-daily-for-scenario"],
@@ -74,8 +91,8 @@ export default function ScenarioLab({ embedded = false }) {
     const params = new URLSearchParams(location.search);
     const region = params.get("region");
     const developmentId = params.get("development_id");
-    if (region && REGION_MAP[region]) {
-      setRegionFromUrl(REGION_MAP[region]);
+    if (region) {
+      setRegionFromUrl(REGION_MAP[region] || decodeURIComponent(region));
     } else {
       setRegionFromUrl("");
     }
@@ -88,14 +105,15 @@ export default function ScenarioLab({ embedded = false }) {
 
   useEffect(() => {
     if (!options) return;
+    const resolvedRegion = normalizeRegionSelection(regionFromUrl || config.region, options.regions || []);
     setConfig((prev) => ({
       ...prev,
       driver: options.drivers?.includes(prev.driver) ? prev.driver : options.drivers?.[0] ?? prev.driver,
       event: options.events?.includes(prev.event) ? prev.event : options.events?.[0] ?? prev.event,
-      region: options.regions?.includes(regionFromUrl || prev.region) ? (regionFromUrl || prev.region) : options.regions?.[0] ?? prev.region,
+      region: options.regions?.includes(resolvedRegion) ? resolvedRegion : options.regions?.[0] ?? prev.region,
       horizon: options.horizons?.includes(prev.horizon) ? prev.horizon : options.horizons?.[0] ?? prev.horizon,
     }));
-  }, [options, regionFromUrl]);
+  }, [config.region, options, regionFromUrl]);
 
   useEffect(() => {
     if (!developmentIdFromUrl) {
@@ -110,12 +128,13 @@ export default function ScenarioLab({ embedded = false }) {
     }
 
     const preset = development.scenario_preset;
+    const resolvedPresetRegion = normalizeRegionSelection(preset.region, options.regions || []);
     setPresetDevelopment(development);
     setConfig((prev) => ({
       ...prev,
       driver: options.drivers?.includes(preset.driver) ? preset.driver : prev.driver,
       event: options.events?.includes(preset.event) ? preset.event : prev.event,
-      region: options.regions?.includes(preset.region) ? preset.region : prev.region,
+      region: options.regions?.includes(resolvedPresetRegion) ? resolvedPresetRegion : prev.region,
       severity: Number.isFinite(Number(preset.severity)) ? Number(preset.severity) : prev.severity,
       horizon: options.horizons?.includes(preset.horizon) ? preset.horizon : prev.horizon,
     }));
@@ -127,11 +146,17 @@ export default function ScenarioLab({ embedded = false }) {
     setExecutionLogs([]);
     setRunError("");
     try {
-      const response = await runScenarioStream(config, {
+      const response = await runScenarioStream(
+        {
+          ...config,
+          scenario_prompt: scenarioPrompt.trim() || undefined,
+        },
+        {
         onLog: (log) => {
           setExecutionLogs((prev) => [...prev, log]);
         },
-      });
+        },
+      );
       await new Promise((resolve) => setTimeout(resolve, 260));
       setResults(response);
       setGraphRunId((prev) => prev + 1);
@@ -145,13 +170,15 @@ export default function ScenarioLab({ embedded = false }) {
   const handleReset = () => {
     if (presetDevelopment?.scenario_preset) {
       const preset = presetDevelopment.scenario_preset;
+      const resolvedPresetRegion = normalizeRegionSelection(preset.region, options?.regions || []);
       setConfig({
         driver: options?.drivers?.includes(preset.driver) ? preset.driver : options?.drivers?.[0] ?? DEFAULT_CONFIG.driver,
         event: options?.events?.includes(preset.event) ? preset.event : options?.events?.[0] ?? DEFAULT_CONFIG.event,
-        region: options?.regions?.includes(preset.region) ? preset.region : options?.regions?.[0] ?? DEFAULT_CONFIG.region,
+        region: options?.regions?.includes(resolvedPresetRegion) ? resolvedPresetRegion : options?.regions?.[0] ?? DEFAULT_CONFIG.region,
         severity: Number.isFinite(Number(preset.severity)) ? Number(preset.severity) : DEFAULT_CONFIG.severity,
         horizon: options?.horizons?.includes(preset.horizon) ? preset.horizon : options?.horizons?.[0] ?? DEFAULT_CONFIG.horizon,
       });
+      setScenarioPrompt("");
       setIsRunning(false);
       setResults(null);
       setExecutionLogs([]);
@@ -162,10 +189,11 @@ export default function ScenarioLab({ embedded = false }) {
     setConfig({
       driver: options?.drivers?.[0] ?? DEFAULT_CONFIG.driver,
       event: options?.events?.[0] ?? DEFAULT_CONFIG.event,
-      region: regionFromUrl || options?.regions?.[0] || DEFAULT_CONFIG.region,
+      region: normalizeRegionSelection(regionFromUrl, options?.regions || []) || options?.regions?.[0] || DEFAULT_CONFIG.region,
       severity: DEFAULT_CONFIG.severity,
       horizon: options?.horizons?.[0] ?? DEFAULT_CONFIG.horizon,
     });
+    setScenarioPrompt("");
     setIsRunning(false);
     setResults(null);
     setExecutionLogs([]);
@@ -202,7 +230,16 @@ export default function ScenarioLab({ embedded = false }) {
         ) : null}
 
         <motion.div {...reveal} className="grid grid-cols-1 gap-4 lg:grid-cols-[340px_1fr]">
-          <ScenarioControls config={config} setConfig={setConfig} onRun={handleRun} onReset={handleReset} isRunning={isRunning} options={options} />
+          <ScenarioControls
+            config={config}
+            setConfig={setConfig}
+            scenarioPrompt={scenarioPrompt}
+            setScenarioPrompt={setScenarioPrompt}
+            onRun={handleRun}
+            onReset={handleReset}
+            isRunning={isRunning}
+            options={options}
+          />
           <div className="space-y-4">
             <SimulationLog logs={executionLogs} isRunning={isRunning} />
             <div className="min-h-[460px]">
@@ -214,15 +251,10 @@ export default function ScenarioLab({ embedded = false }) {
           </div>
         </motion.div>
 
-        <motion.div {...reveal} className="flex items-start gap-3 rounded-xl p-4 text-zinc-300">
-          <FlaskConical className="mt-0.5 h-5 w-5 shrink-0 text-zinc-200" />
-          <div>
-            <h3 className="mb-1 text-sm font-semibold text-zinc-100">Scenario Guidance</h3>
-            <p className="text-xs leading-relaxed text-zinc-400">
-              Higher severity increases shock amplitude and activation depth. Use shorter horizons for tactical reaction maps and longer horizons for structural propagation.
-            </p>
-          </div>
+        <motion.div {...reveal}>
+          <ScenarioThemeGraphBoard scenarioResult={results} isScenarioRunning={isRunning} />
         </motion.div>
+
       </div>
     </div>
   );

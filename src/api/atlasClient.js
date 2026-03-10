@@ -3,7 +3,7 @@ const DEV_BACKEND_ORIGIN =
   typeof window !== "undefined" && import.meta.env.DEV ? "http://127.0.0.1:8000" : "";
 const BACKEND_ORIGIN = String(import.meta.env.VITE_BACKEND_ORIGIN || DEV_BACKEND_ORIGIN || "").replace(/\/$/, "");
 const DEFAULT_REQUEST_TIMEOUT_MS = 12000;
-const SCENARIO_OPTIONS_CACHE_KEY = "atlas:scenario-options:v1";
+const SCENARIO_OPTIONS_CACHE_KEY = "atlas:scenario-options:v2";
 const SCENARIO_OPTIONS_CACHE_TTL_MS = 30 * 60 * 1000;
 const WORLD_PULSE_CACHE_KEY = "atlas:world-pulse-live:v1";
 const WORLD_PULSE_CACHE_TTL_MS = 20 * 1000;
@@ -320,5 +320,29 @@ export async function runNewsNavigator(payload) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
     timeoutMs: 28000,
+  });
+}
+
+export async function fetchNewsHeadlines({
+  horizon = "daily",
+  country = "",
+  region = "",
+  contentTypes = [],
+  sourceTypes = [],
+  search = "",
+  limit = 24,
+} = {}, { signal } = {}) {
+  const query = new URLSearchParams({
+    horizon: String(horizon || "daily"),
+    country: String(country || ""),
+    region: String(region || ""),
+    content_types: Array.isArray(contentTypes) ? contentTypes.join(",") : "",
+    source_types: Array.isArray(sourceTypes) ? sourceTypes.join(",") : "",
+    search: String(search || ""),
+    limit: String(limit || 24),
+  });
+  return request(`${API_BASE}/briefing/news-headlines?${query.toString()}`, {
+    timeoutMs: BRIEFING_REQUEST_TIMEOUT_MS,
+    signal,
   });
 }

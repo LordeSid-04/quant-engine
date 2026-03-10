@@ -1,10 +1,8 @@
 import React, { useMemo } from "react";
 import { motion } from "framer-motion";
 import { ArrowRight, FlaskConical, Landmark, Sparkles } from "lucide-react";
-import { Link } from "react-router-dom";
 
 export default function WorldPulseHero({
-  headlineBrief,
   selectedDevelopment,
   themeBoard = [],
   rightPanel = null,
@@ -33,26 +31,23 @@ export default function WorldPulseHero({
               Signal Confidence For Every
               <span className="atlas-text-gradient block">Global Macro Regime Shift</span>
             </h1>
-            <p className="mt-4 max-w-3xl text-sm leading-relaxed text-zinc-300 sm:text-base">
-              {headlineBrief || "Streaming live developments, transmission pathways, and validated macro signals."}
-            </p>
 
             <div className="mt-6 flex flex-wrap items-center gap-3">
-              <Link
-                to={scenarioTarget}
+              <a
+                href={scenarioTarget}
                 className="group inline-flex items-center gap-2 rounded-full border border-white/30 bg-white px-5 py-2.5 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-950 transition duration-300 hover:bg-zinc-200"
               >
                 <FlaskConical className="h-3.5 w-3.5" />
                 Run Scenario
                 <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-              </Link>
-              <Link
-                to={memoryTarget}
+              </a>
+              <a
+                href={memoryTarget}
                 className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/[0.04] px-5 py-2.5 text-xs font-medium uppercase tracking-[0.14em] text-zinc-200 transition duration-300 hover:border-white/30 hover:bg-white/[0.08]"
               >
                 <Landmark className="h-3.5 w-3.5" />
                 Open Memory Vault
-              </Link>
+              </a>
             </div>
           </motion.div>
 

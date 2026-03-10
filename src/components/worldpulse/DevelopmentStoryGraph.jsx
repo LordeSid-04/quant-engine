@@ -49,7 +49,7 @@ function clipLabel(value, max = 24) {
   return `${label.slice(0, max - 3)}...`;
 }
 
-export default function DevelopmentStoryGraph({ graph, onSelectNode }) {
+export default function DevelopmentStoryGraph({ graph, onSelectNode, borderless = false }) {
   const [activeNodeId, setActiveNodeId] = useState("");
 
   const nodes = graph?.nodes || [];
@@ -88,15 +88,22 @@ export default function DevelopmentStoryGraph({ graph, onSelectNode }) {
 
   const frameWidth = useMemo(() => Math.max(680, pipelineNodes.length * 260), [pipelineNodes.length]);
 
+  const rootClass = borderless
+    ? "px-0 py-0"
+    : "rounded-xl border border-white/10 bg-black/30 px-3 py-3 backdrop-blur-md";
+  const railClass = borderless
+    ? "overflow-x-auto rounded-lg bg-[radial-gradient(circle_at_50%_12%,rgba(255,255,255,0.14),transparent_66%)]"
+    : "overflow-x-auto rounded-lg border border-white/10 bg-[radial-gradient(circle_at_50%_12%,rgba(255,255,255,0.14),transparent_66%)]";
+
   return (
-    <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-3 backdrop-blur-md">
+    <div className={rootClass}>
       <div className="mb-2 flex items-center justify-between">
         <div className="text-xs uppercase tracking-[0.13em] text-zinc-500">Story Pipeline</div>
         <div className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">select node</div>
       </div>
 
       {pipelineNodes.length ? (
-        <div className="overflow-x-auto rounded-lg border border-white/10 bg-[radial-gradient(circle_at_50%_12%,rgba(255,255,255,0.14),transparent_66%)]">
+        <div className={railClass}>
           <div className="mx-auto min-w-full px-4 py-4" style={{ width: `${frameWidth}px` }}>
             <div className="flex items-start">
               {pipelineNodes.map((node, index) => {

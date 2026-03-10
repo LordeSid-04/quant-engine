@@ -235,10 +235,19 @@ class NavigatorAttachment(BaseModel):
     image_data_url: str | None = None
 
 
+class NewsNavigatorFilters(BaseModel):
+    country: str = Field(default="", max_length=120)
+    region: str = Field(default="", max_length=80)
+    content_types: list[str] = Field(default_factory=list)
+    source_types: list[str] = Field(default_factory=list)
+    query: str = Field(default="", max_length=320)
+
+
 class NewsNavigatorRequest(BaseModel):
     prompt: str = Field(..., min_length=4, max_length=4000)
     horizon: str = Field(default="daily", min_length=4, max_length=12)
     attachments: list[NavigatorAttachment] = Field(default_factory=list)
+    filters: NewsNavigatorFilters = Field(default_factory=NewsNavigatorFilters)
 
 
 class NavigatorHighlight(BaseModel):
@@ -265,6 +274,25 @@ class NavigatorSourceItem(BaseModel):
     published_at: datetime
     relevance_score: float = Field(..., ge=0.0, le=1.0)
     reason: str
+    region: str = ""
+    content_types: list[str] = Field(default_factory=list)
+    source_type: str = "live"
+    summary: str = ""
+
+
+class NavigatorHeadlineItem(BaseModel):
+    article_id: str
+    title: str
+    url: str
+    source: str
+    published_at: datetime
+    summary: str
+    relevance_score: float = Field(..., ge=0.0, le=1.0)
+    region: str = ""
+    content_types: list[str] = Field(default_factory=list)
+    source_type: str = "live"
+    theme_id: str = ""
+    theme_label: str = ""
 
 
 class NavigatorAttachmentInsight(BaseModel):
@@ -279,6 +307,7 @@ class NavigatorAttachmentInsight(BaseModel):
 class NewsNavigatorResponse(TimestampedResponse):
     prompt: str
     horizon: str
+    analysis_mode: str = "intelligence"
     answer: str
     importance_analysis: str
     local_impact_analysis: str
@@ -289,4 +318,12 @@ class NewsNavigatorResponse(TimestampedResponse):
     sources: list[NavigatorSourceItem]
     attachment_insights: list[NavigatorAttachmentInsight] = Field(default_factory=list)
     memory_entry_id: str
+    explanation: ExplanationTrace
+
+
+class NewsHeadlinesResponse(TimestampedResponse):
+    horizon: str
+    filters: NewsNavigatorFilters
+    total: int = Field(..., ge=0)
+    headlines: list[NavigatorHeadlineItem]
     explanation: ExplanationTrace

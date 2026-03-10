@@ -2,7 +2,6 @@ import React, { startTransition, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Activity,
   ArrowRight,
   BookOpenText,
   CheckCircle2,
@@ -14,12 +13,12 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import { Link } from "react-router-dom";
 import GlobeMap from "@/components/worldpulse/GlobeMap";
 import DevelopmentStoryGraph from "@/components/worldpulse/DevelopmentStoryGraph";
 import CountryRelationPanel from "@/components/worldpulse/CountryRelationPanel";
 import WorldPulseHero from "@/components/worldpulse/WorldPulseHero";
 import NewsNavigatorPanel from "@/components/worldpulse/NewsNavigatorPanel";
+import KeywordHighlighter from "@/components/worldpulse/KeywordHighlighter";
 import { StatBadge } from "@/components/premium/SurfaceCard";
 import {
   fetchBriefingFeedStatus,
@@ -33,22 +32,6 @@ import {
 } from "@/api/atlasClient";
 
 const PANEL_CLASS = "rounded-2xl border border-white/10";
-const INNER_PANEL_CLASS = "rounded-xl border border-white/10";
-
-function scoreTone(value) {
-  const score = Number(value || 0);
-  if (score >= 75) return "text-zinc-100";
-  if (score >= 55) return "text-zinc-300";
-  return "text-zinc-400";
-}
-
-function stateTone(state) {
-  const normalized = String(state || "").toLowerCase();
-  if (normalized.includes("hot")) return "text-zinc-100";
-  if (normalized.includes("cool")) return "text-zinc-300";
-  if (normalized.includes("heat")) return "text-zinc-200";
-  return "text-zinc-400";
-}
 
 function toNumeric(value, fallback = 0) {
   const parsed = Number(value);
@@ -62,19 +45,6 @@ function formatClock(value) {
     minute: "2-digit",
     second: "2-digit",
   });
-}
-
-function formatRelativeTime(value) {
-  if (!value) return "recently";
-  const diffMs = Date.now() - new Date(value).getTime();
-  if (!Number.isFinite(diffMs) || diffMs < 0) return "just now";
-  const minutes = Math.floor(diffMs / 60000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
 }
 
 function publicLensText(value) {
@@ -291,6 +261,8 @@ export default function WorldPulse({ embedded = false }) {
   const [focusedCountry, setFocusedCountry] = useState(null);
   const [mapFullscreenOpen, setMapFullscreenOpen] = useState(false);
   const [proofConsoleOpen, setProofConsoleOpen] = useState(false);
+  const [navigatorHeadline, setNavigatorHeadline] = useState(null);
+  const [navigatorHighlights, setNavigatorHighlights] = useState([]);
 
   const { data, isLoading, isError, error, isFetching } = useQuery({
     queryKey: ["briefing-daily"],
@@ -417,20 +389,6 @@ export default function WorldPulse({ embedded = false }) {
     return rows.sort((a, b) => b.publishedTs - a.publishedTs).slice(0, 10);
   }, [developments]);
 
-  const developmentTape = useMemo(() => {
-    const map = new Map();
-    developments.forEach((development) => {
-      const sourceRows = (development?.proof_bundle?.source_evidence || [])
-        .map((item) => ({
-          ...item,
-          publishedTs: Date.parse(item.published_at) || 0,
-        }))
-        .sort((a, b) => b.publishedTs - a.publishedTs);
-      map.set(development.development_id, sourceRows[0] || null);
-    });
-    return map;
-  }, [developments]);
-
   const healthySourceSet = useMemo(() => {
     return new Set(
       sourceRows
@@ -550,6 +508,42 @@ export default function WorldPulse({ embedded = false }) {
     ? `/?development_id=${encodeURIComponent(selectedDevelopment.development_id)}#scenario-lab`
     : "/#scenario-lab";
 
+  const handleThemeSelectionFromNavigator = (themeId, headline, analysis) => {
+    if (headline) {
+      setNavigatorHeadline(headline);
+    }
+    if (analysis?.highlights) {
+      setNavigatorHighlights(analysis.highlights);
+    }
+    if (!themeId) return;
+
+    const match = developments.find((item) => item.theme_id === themeId);
+    if (!match) return;
+    if (match.development_id === selectedDevelopmentId) return;
+
+    startTransition(() => {
+      setSelectedDevelopmentId(match.development_id);
+      setSelectedThemeId(match.theme_id || "");
+      setSelectedDevelopmentLabel(match.label || match.title || "");
+    });
+  };
+
+  const handleHeadlineSelectionFromNavigator = ({ headline, analysis }) => {
+    if (headline) {
+      setNavigatorHeadline(headline);
+      if (headline.theme_id) {
+        handleThemeSelectionFromNavigator(headline.theme_id, headline, analysis || null);
+      }
+    }
+    if (analysis?.highlights) {
+      setNavigatorHighlights(analysis.highlights);
+    }
+  };
+
+  const displayedHeadlineTitle = navigatorHeadline?.title || selectedDevelopment?.title || "";
+  const displayedNarrative =
+    navigatorHeadline?.summary || selectedDevelopment?.narrative_story || selectedDevelopment?.executive_summary || "";
+
   const mapInstructionText = mapSelectionMode
     ? `Selecting ${mapSelectionMode} country: click a map pin`
     : "Hover for country names | Use Set Start/Set End to build relation";
@@ -635,21 +629,17 @@ export default function WorldPulse({ embedded = false }) {
     <div className={`${embedded ? "min-h-0" : "min-h-[calc(100vh-74px)]"} px-3 py-3 sm:px-4 sm:py-4 lg:px-6 lg:py-6`}>
       <div className="mx-auto max-w-[1650px] space-y-4">
         <WorldPulseHero
-          headlineBrief={data?.headline_brief}
           selectedDevelopment={selectedDevelopment}
           themeBoard={data?.theme_board || []}
           rightPanel={heroSpilloverPanel}
         />
 
-        <NewsNavigatorPanel />
-
-        <section className="space-y-3">
+        <section className={`${PANEL_CLASS} space-y-4 bg-black/24 p-3 backdrop-blur-sm sm:p-4`}>
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h2 className="text-xl font-semibold tracking-tight text-zinc-100 sm:text-2xl">Signal Desk: Live Development Intelligence</h2>
-              <p className="mt-1.5 max-w-5xl text-sm text-zinc-400">
-                Purpose: surface the most material macro developments in real time, connect them to verified source evidence, and translate
-                them into practical action for professionals and the public.
+              <h2 className="text-xl font-semibold tracking-tight text-zinc-100 sm:text-2xl">Critical Developments</h2>
+              <p className="mt-1.5 max-w-4xl text-sm text-zinc-400">
+                Unified navigator + intelligence panel. Select a top headline or prompt directly to drive the full macro readout.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -664,89 +654,45 @@ export default function WorldPulse({ embedded = false }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 xl:grid-cols-[360px_minmax(0,1fr)]">
-            <aside className={`${PANEL_CLASS} bg-black/24 p-3 backdrop-blur-sm`}>
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 text-sm font-semibold text-zinc-100">
-                  <Activity className="h-4 w-4 text-zinc-300" />
-                  Critical Developments
+          <NewsNavigatorPanel
+            borderless
+            onHeadlineSelected={handleHeadlineSelectionFromNavigator}
+            onThemeSelected={handleThemeSelectionFromNavigator}
+          />
+
+          {selectedDevelopment ? (
+            <div className="space-y-4 rounded-xl bg-white/[0.03] p-3 sm:p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="max-w-4xl">
+                  <div className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">Critical Developments</div>
+                  <KeywordHighlighter
+                    text={displayedHeadlineTitle}
+                    highlights={navigatorHighlights}
+                    tooltipLabel="Headline keyword"
+                    className="mt-1 text-2xl font-bold leading-tight text-zinc-100"
+                  />
+                  <KeywordHighlighter
+                    text={displayedNarrative}
+                    highlights={navigatorHighlights}
+                    tooltipLabel="Narrative keyword"
+                    className="mt-2 text-sm leading-relaxed text-zinc-300"
+                  />
+                  {isFetchingDevelopmentDetail ? <div className="mt-1 text-[10px] text-zinc-500">Refreshing detailed intelligence...</div> : null}
                 </div>
-                <div className="text-[10px] uppercase tracking-[0.11em] text-zinc-500">Select to inspect</div>
+                <a
+                  href={scenarioTarget}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-white/25 px-3 py-1.5 text-[11px] font-medium text-zinc-100 transition duration-300 hover:border-white/40 hover:tracking-[0.02em]"
+                >
+                  <FlaskConical className="h-3.5 w-3.5" />
+                  Run Scenario
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </a>
               </div>
 
-              <div className="mt-2.5 max-h-[520px] space-y-1.5 overflow-auto pr-1">
-                {developments.map((dev) => {
-                  const active = dev.development_id === selectedDevelopment?.development_id;
-                  const impScore = dev.scorecard?.find((score) => score.metric === "importance")?.value ?? dev.importance;
-                  const latestSource = developmentTape.get(dev.development_id);
-                  return (
-                    <button
-                      key={dev.development_id}
-                      type="button"
-                      onClick={() =>
-                        startTransition(() => {
-                          setSelectedDevelopmentId(dev.development_id);
-                          setSelectedThemeId(dev.theme_id);
-                          setSelectedDevelopmentLabel(dev.label || dev.title || "");
-                        })
-                      }
-                      className={`atlas-focus-ring w-full rounded-lg px-2.5 py-2 text-left transition ${
-                        active ? "bg-white/[0.11]" : "bg-white/[0.04] hover:bg-white/[0.08]"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="text-[12px] font-semibold text-zinc-100">{dev.label}</div>
-                        <span className={`text-[11px] font-semibold ${scoreTone(impScore)}`}>{impScore}</span>
-                      </div>
-                      <div className="mt-0.5 text-[10px] uppercase tracking-[0.1em] text-zinc-500">
-                        <span className={stateTone(dev.state)}>{dev.state}</span>
-                        <span className="mx-1 text-zinc-600">/</span>
-                        <span className={stateTone(dev.outlook_state)}>{dev.outlook_state}</span>
-                        <span className="mx-1 text-zinc-600">•</span>
-                        {dev.market_confirmation}
-                      </div>
-                      <div className="mt-1 line-clamp-1 text-[11px] text-zinc-300">
-                        {latestSource?.title || "Awaiting fresh source confirmation"}
-                      </div>
-                      <div className="mt-0.5 text-[10px] text-zinc-500">
-                        {latestSource ? `${latestSource.source} • ${formatRelativeTime(latestSource.published_at)}` : "No linked source yet"}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </aside>
-
-            <section className="space-y-3">
-              <div className={`${PANEL_CLASS} bg-black/24 p-3 backdrop-blur-sm sm:p-4`}>
-                {selectedDevelopment ? (
-                  <div className="space-y-3">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <div className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">Critical Development + Source Narrative</div>
-                        <h3 className="mt-1 text-base font-semibold text-zinc-100">{selectedDevelopment.title}</h3>
-                        <p className="mt-1 text-sm text-zinc-300">{selectedDevelopment.narrative_story}</p>
-                        {isFetchingDevelopmentDetail ? <div className="mt-1 text-[10px] text-zinc-500">Refreshing detailed intelligence...</div> : null}
-                      </div>
-                      <Link
-                        to={scenarioTarget}
-                        className="inline-flex items-center gap-1.5 rounded-full border border-white/25 px-3 py-1.5 text-[11px] font-medium text-zinc-100 transition duration-300 hover:border-white/40 hover:tracking-[0.02em]"
-                      >
-                        <FlaskConical className="h-3.5 w-3.5" />
-                        Run Scenario
-                        <ArrowRight className="h-3.5 w-3.5" />
-                      </Link>
-                    </div>
-
-                    <DevelopmentStoryGraph graph={selectedDevelopment.story_graph} onSelectNode={setSelectedGraphNode} />
-                  </div>
-                ) : (
-                  <div className="text-sm text-zinc-500">Select a development to view analysis.</div>
-                )}
-              </div>
+              <DevelopmentStoryGraph graph={selectedDevelopment.story_graph} onSelectNode={setSelectedGraphNode} borderless />
 
               <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                <div className={`${INNER_PANEL_CLASS} bg-black/20 p-3 backdrop-blur-sm`}>
+                <div className="rounded-xl bg-white/[0.02] p-3">
                   <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-zinc-100">
                     <BookOpenText className="h-4 w-4 text-zinc-300" />
                     What This Means
@@ -760,7 +706,7 @@ export default function WorldPulse({ embedded = false }) {
                       <div className="mt-1 text-[11px] text-zinc-400">Public lens: {publicLensText(selectedGraphNode.detail)}</div>
                     </div>
                   ) : (
-                    <div className="mt-2 max-h-[208px] space-y-2 overflow-auto pr-1">
+                    <div className="mt-2 max-h-[220px] space-y-2 overflow-auto pr-1">
                       {(selectedDevelopment?.causal_chain || []).slice(0, 4).map((step) => (
                         <div key={`${selectedDevelopment.development_id}-${step.step}`} className="rounded-lg bg-white/[0.04] px-2.5 py-2">
                           <div className="text-[11px] font-semibold text-zinc-100">
@@ -774,14 +720,14 @@ export default function WorldPulse({ embedded = false }) {
                   )}
                 </div>
 
-                <div className={`${INNER_PANEL_CLASS} bg-black/20 p-3 backdrop-blur-sm`}>
+                <div className="rounded-xl bg-white/[0.02] p-3">
                   <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-zinc-100">
                     <ShieldAlert className="h-4 w-4 text-zinc-300" />
                     Risk Playbook
                   </div>
                   <div className="text-[10px] uppercase tracking-[0.1em] text-zinc-500">Actionable for portfolios and households</div>
 
-                  <div className="mt-2 max-h-[208px] space-y-2 overflow-auto pr-1">
+                  <div className="mt-2 max-h-[220px] space-y-2 overflow-auto pr-1">
                     {(selectedDevelopment?.risk_implications || []).slice(0, 3).map((item, idx) => (
                       <div key={`${selectedDevelopment.development_id}-risk-${idx}`} className="rounded-lg bg-white/[0.04] px-2.5 py-2">
                         <div className="text-[11px] text-zinc-100">
@@ -804,10 +750,11 @@ export default function WorldPulse({ embedded = false }) {
                   </div>
                 </div>
               </div>
-            </section>
-          </div>
+            </div>
+          ) : (
+            <div className="text-sm text-zinc-500">Select a development to view analysis.</div>
+          )}
         </section>
-
         {isLoading ? <div className="text-xs text-zinc-500">Loading live signal desk...</div> : null}
         {isError ? <div className="text-xs text-rose-300">Failed to load briefing: {error?.message || "Unknown error"}</div> : null}
       </div>
@@ -904,3 +851,5 @@ export default function WorldPulse({ embedded = false }) {
     </div>
   );
 }
+
+

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 import re
@@ -27,10 +27,13 @@ from app.schemas.briefing import (
     MacroDevelopment,
     MemoryPreviewItem,
     ModelProof,
+    NewsHeadlinesResponse,
+    NewsNavigatorFilters,
     NewsNavigatorRequest,
     NewsNavigatorResponse,
     NavigatorAttachment,
     NavigatorAttachmentInsight,
+    NavigatorHeadlineItem,
     NavigatorHighlight,
     NavigatorSourceItem,
     NavigatorThemeInsight,
@@ -555,10 +558,23 @@ class BriefingEngine:
     async def run_news_navigator(self, *, payload: NewsNavigatorRequest) -> NewsNavigatorResponse:
         prompt = payload.prompt.strip()
         horizon = self._normalize_horizon(payload.horizon)
-        window_hours = {"daily": 24, "weekly": 168, "monthly": 720}[horizon]
-
-        live = await self.theme_engine.get_live_themes(window_hours=window_hours, limit=10)
+        window_hours = {"daily": 24, "weekly": 168, "monthly": 720, "yearly": 8760}[horizon]
+        filters = self._sanitize_navigator_filters(payload.filters)
+        live, source_pool = await self._collect_navigator_source_pool_with_backfill(
+            window_hours=window_hours,
+            limit_per_theme=14,
+        )
+        filtered_pool = self._apply_news_filters(rows=source_pool, filters=filters)
         prompt_terms = _extract_keywords(prompt)
+        if filters.query:
+            for term in _extract_keywords(filters.query):
+                if term not in prompt_terms:
+                    prompt_terms.append(term)
+        analysis_mode = (
+            "informational"
+            if self._should_use_informational_mode(prompt=prompt, attachments=payload.attachments)
+            else "intelligence"
+        )
         attachment_insights, attachment_terms, attachment_context = self._analyze_attachments(
             attachments=payload.attachments,
             prompt_terms=prompt_terms,
@@ -567,49 +583,24 @@ class BriefingEngine:
             if term not in prompt_terms:
                 prompt_terms.append(term)
 
-        source_pool: list[dict[str, Any]] = []
-        seen_source_keys: set[str] = set()
-        candidate_themes = [theme for theme in live.themes[:8] if int(theme.mention_count) > 0]
-        if not candidate_themes and live.themes:
-            candidate_themes = [live.themes[0]]
-
-        async def _load_theme_sources(theme: Any) -> tuple[Any, Any]:
-            try:
-                payload = await self.theme_engine.get_theme_sources(
-                    theme_id=theme.theme_id,
-                    window_hours=window_hours,
-                    limit=10,
-                )
-                return theme, payload
-            except Exception:
-                return theme, None
-
-        source_results = await asyncio.gather(*[_load_theme_sources(theme) for theme in candidate_themes])
-
-        for theme, theme_sources in source_results:
-            if theme_sources is None:
-                continue
-            for article in theme_sources.articles:
-                source_key = str(article.article_id or article.url)
-                if not source_key or source_key in seen_source_keys:
-                    continue
-                seen_source_keys.add(source_key)
-                source_pool.append(
-                    {
-                        "theme_id": theme.theme_id,
-                        "theme_label": theme.label,
-                        "article": article,
-                    }
-                )
-
         scored_sources = []
-        for row in source_pool:
+        if self._has_active_news_filters(filters):
+            active_pool = filtered_pool
+        else:
+            active_pool = filtered_pool if filtered_pool else source_pool[:24]
+        for row in active_pool:
             article = row["article"]
-            source_text = f"{article.title} {article.excerpt}".lower()
+            source_text = str(row.get("text", f"{article.title} {article.excerpt}")).lower()
             keyword_overlap = sum(1 for term in prompt_terms if term in source_text)
+            recency_score = self._recency_score(
+                published_at=article.published_at,
+                window_hours=window_hours,
+            )
             score = float(
                 clamp(
-                    float(article.relevance_score) * 0.62 + min(1.0, keyword_overlap / 5.0) * 0.38,
+                    float(article.relevance_score) * 0.54
+                    + min(1.0, keyword_overlap / 6.0) * 0.34
+                    + recency_score * 0.12,
                     0.0,
                     1.0,
                 )
@@ -618,6 +609,7 @@ class BriefingEngine:
                 {
                     **row,
                     "keyword_overlap": keyword_overlap,
+                    "recency_score": recency_score,
                     "score": score,
                 }
             )
@@ -696,45 +688,60 @@ class BriefingEngine:
         top_theme = insight_rows[0] if insight_rows else None
         second_theme = insight_rows[1] if len(insight_rows) > 1 else None
 
-        importance_analysis = (
-            (
-                f"{top_theme.label} is the highest-priority signal for the {horizon} window: "
-                f"it leads on source confirmation, market reaction, and narrative persistence."
+        if analysis_mode == "informational":
+            importance_analysis = (
+                "Prompt classified as informational. Returning verified headline/source evidence "
+                "without scenario-impact conclusions."
             )
-            if top_theme
-            else "No dominant macro signal could be isolated with high confidence from current verified coverage."
-        )
-        if second_theme:
-            importance_analysis += (
-                f" Secondary watch item: {second_theme.label}."
+            local_impact_analysis = (
+                "Local impact engine was not run because the request is data/information oriented."
             )
+            global_impact_analysis = (
+                "Global impact engine was not run because the request is data/information oriented."
+            )
+            emerging_theme_analysis = (
+                "Emerging-theme scoring is available, but forward-looking impact interpretation was intentionally skipped."
+            )
+        else:
+            importance_analysis = (
+                (
+                    f"{top_theme.label} is the highest-priority signal for the {horizon} window: "
+                    f"it leads on source confirmation, market reaction, and narrative persistence."
+                )
+                if top_theme
+                else "No dominant macro signal could be isolated with high confidence from current verified coverage."
+            )
+            if second_theme:
+                importance_analysis += (
+                    f" Secondary watch item: {second_theme.label}."
+                )
 
-        local_impact_analysis = (
-            top_theme.local_impact if top_theme else "Local impact assessment is limited until more source depth is available."
-        )
-        global_impact_analysis = self._global_impact_summary(
-            top_theme=top_theme,
-            second_theme=second_theme,
-            horizon=horizon,
-        )
-        if attachment_context:
-            global_impact_analysis += f" Attachment context: {' '.join(attachment_context[:2])}"
-
-        emerging_theme = next(
-            (
-                item
-                for item in insight_rows
-                if item.heat_state.lower() in {"warming", "hot"} and float(item.relevance_score) >= 0.42
-            ),
-            None,
-        )
-        emerging_theme_analysis = (
-            (
-                f"Emerging signal detected: {emerging_theme.label} ({emerging_theme.heat_state}) with broadening evidence."
+            local_impact_analysis = (
+                top_theme.local_impact if top_theme else "Local impact assessment is limited until more source depth is available."
             )
-            if emerging_theme
-            else "No new theme has crossed the emerging-signal threshold; current regime is mixed-to-stable."
-        )
+            global_impact_analysis = self._global_impact_summary(
+                top_theme=top_theme,
+                second_theme=second_theme,
+                horizon=horizon,
+            )
+            if attachment_context:
+                global_impact_analysis += f" Attachment context: {' '.join(attachment_context[:2])}"
+
+            emerging_theme = next(
+                (
+                    item
+                    for item in insight_rows
+                    if item.heat_state.lower() in {"warming", "hot"} and float(item.relevance_score) >= 0.42
+                ),
+                None,
+            )
+            emerging_theme_analysis = (
+                (
+                    f"Emerging signal detected: {emerging_theme.label} ({emerging_theme.heat_state}) with broadening evidence."
+                )
+                if emerging_theme
+                else "No new theme has crossed the emerging-signal threshold; current regime is mixed-to-stable."
+            )
 
         highlights: list[NavigatorHighlight] = []
         seen_terms: set[str] = set()
@@ -778,24 +785,36 @@ class BriefingEngine:
                 published_at=row["article"].published_at,
                 relevance_score=round(float(row["score"]), 4),
                 reason=(
-                    f"Supports the {row['theme_label']} narrative with direct prompt relevance and recent publication evidence."
+                    f"Live {row.get('source_type', 'reliable')} source aligned with {row['theme_label']} and matched prompt/filter intent."
                 ),
+                region=str(row.get("region", "")),
+                content_types=[str(item) for item in row.get("content_types", [])],
+                source_type=str(row.get("source_type", "live")),
+                summary=str(row["article"].excerpt or ""),
             )
             for row in selected_sources
         ]
 
-        answer = await self._generate_news_navigator_answer(
-            prompt=prompt,
-            horizon=horizon,
-            attachments=payload.attachments,
-            attachment_insights=attachment_insights,
-            theme_insights=insight_rows,
-            source_items=source_items,
-            importance_analysis=importance_analysis,
-            local_impact_analysis=local_impact_analysis,
-            global_impact_analysis=global_impact_analysis,
-            emerging_theme_analysis=emerging_theme_analysis,
-        )
+        if analysis_mode == "informational":
+            answer = self._informational_news_digest(
+                prompt=prompt,
+                horizon=horizon,
+                source_items=source_items,
+                attachment_insights=attachment_insights,
+            )
+        else:
+            answer = await self._generate_news_navigator_answer(
+                prompt=prompt,
+                horizon=horizon,
+                attachments=payload.attachments,
+                attachment_insights=attachment_insights,
+                theme_insights=insight_rows,
+                source_items=source_items,
+                importance_analysis=importance_analysis,
+                local_impact_analysis=local_impact_analysis,
+                global_impact_analysis=global_impact_analysis,
+                emerging_theme_analysis=emerging_theme_analysis,
+            )
 
         memory_entry_id = self.repository.save_public_memory_entry(
             {
@@ -811,13 +830,15 @@ class BriefingEngine:
                 "global_impact": top_theme.global_impact if top_theme else "",
                 "source_count": len(source_items),
                 "attachment_count": len(payload.attachments),
+                "filters": filters.model_dump(),
+                "analysis_mode": analysis_mode,
             }
         )
 
         explanation = make_trace(
             summary=(
-                f"News Navigator analyzed {len(source_items)} verified sources, scored "
-                f"{len(insight_rows)} macro themes, and persisted memory entry {memory_entry_id}."
+                f"News Navigator ({analysis_mode}) processed {len(source_items)} verified sources, scored "
+                f"{len(insight_rows)} macro themes, applied live filter set, and persisted memory entry {memory_entry_id}."
             ),
             top_factors=[
                 {
@@ -834,6 +855,7 @@ class BriefingEngine:
             as_of=datetime.now(tz=timezone.utc),
             prompt=prompt,
             horizon=horizon,
+            analysis_mode=analysis_mode,
             answer=answer,
             importance_analysis=importance_analysis,
             local_impact_analysis=local_impact_analysis,
@@ -847,6 +869,459 @@ class BriefingEngine:
             explanation=explanation,
         )
 
+    async def get_news_headlines(
+        self,
+        *,
+        horizon: str,
+        country: str = "",
+        region: str = "",
+        content_types: list[str] | None = None,
+        source_types: list[str] | None = None,
+        search: str = "",
+        limit: int = 24,
+    ) -> NewsHeadlinesResponse:
+        normalized_horizon = self._normalize_horizon(horizon)
+        window_hours = {"daily": 24, "weekly": 168, "monthly": 720, "yearly": 8760}[normalized_horizon]
+        bounded_limit = int(clamp(limit, 6, 80))
+        filters = self._sanitize_navigator_filters(
+            NewsNavigatorFilters(
+                country=country,
+                region=region,
+                content_types=content_types or [],
+                source_types=source_types or [],
+                query=search,
+            )
+        )
+        _, source_pool = await self._collect_navigator_source_pool_with_backfill(
+            window_hours=window_hours,
+            limit_per_theme=max(12, bounded_limit),
+        )
+        filtered_rows = self._apply_news_filters(rows=source_pool, filters=filters)
+
+        ranked_rows: list[dict[str, Any]] = []
+        for row in filtered_rows:
+            article = row["article"]
+            score = float(
+                clamp(
+                    float(article.relevance_score) * 0.58
+                    + self._recency_score(published_at=article.published_at, window_hours=window_hours) * 0.27
+                    + (float(row.get("theme_temperature", 0.0)) / 100.0) * 0.15,
+                    0.0,
+                    1.0,
+                )
+            )
+            ranked_rows.append({**row, "score": score})
+
+        ranked_rows.sort(
+            key=lambda item: (item["score"], item["article"].published_at),
+            reverse=True,
+        )
+        selected = ranked_rows[:bounded_limit]
+        headlines = [
+            NavigatorHeadlineItem(
+                article_id=row["article"].article_id,
+                title=row["article"].title,
+                url=row["article"].url,
+                source=row["article"].source,
+                published_at=row["article"].published_at,
+                summary=str(row["article"].excerpt or ""),
+                relevance_score=round(float(row["score"]), 4),
+                region=str(row.get("region", "")),
+                content_types=[str(item) for item in row.get("content_types", [])],
+                source_type=str(row.get("source_type", "live")),
+                theme_id=str(row.get("theme_id", "")),
+                theme_label=str(row.get("theme_label", "")),
+            )
+            for row in selected
+        ]
+        explanation = make_trace(
+            summary=(
+                f"Loaded {len(headlines)} live reliable headlines for {normalized_horizon} horizon "
+                f"after applying active country/region/content filters."
+            ),
+            top_factors=[
+                {
+                    "factor": str(row.get("theme_id", "global")),
+                    "contribution": float(row.get("score", 0.0) * 100.0),
+                    "weight": 1.0,
+                    "value": float(row.get("score", 0.0)),
+                }
+                for row in selected[:6]
+            ],
+        )
+        return NewsHeadlinesResponse(
+            as_of=datetime.now(tz=timezone.utc),
+            horizon=normalized_horizon,
+            filters=filters,
+            total=len(filtered_rows),
+            headlines=headlines,
+            explanation=explanation,
+        )
+
+    async def _collect_navigator_source_pool(
+        self,
+        *,
+        window_hours: int,
+        limit_per_theme: int,
+    ) -> tuple[Any, list[dict[str, Any]]]:
+        live = await self.theme_engine.get_live_themes(window_hours=window_hours, limit=10)
+        candidate_themes = list(live.themes[:8])
+        if not candidate_themes and live.themes:
+            candidate_themes = [live.themes[0]]
+
+        async def _load_theme_sources(theme: Any) -> tuple[Any, Any]:
+            try:
+                payload = await self.theme_engine.get_theme_sources(
+                    theme_id=theme.theme_id,
+                    window_hours=window_hours,
+                    limit=int(clamp(limit_per_theme, 8, 40)),
+                )
+                return theme, payload
+            except Exception:
+                return theme, None
+
+        source_results = await asyncio.gather(*[_load_theme_sources(theme) for theme in candidate_themes])
+        source_pool: list[dict[str, Any]] = []
+        seen_source_keys: set[str] = set()
+
+        for theme, theme_sources in source_results:
+            if theme_sources is None:
+                continue
+            for article in theme_sources.articles:
+                source_key = str(article.article_id or article.url)
+                if not source_key or source_key in seen_source_keys:
+                    continue
+                seen_source_keys.add(source_key)
+                text = f"{article.title} {article.excerpt}".lower()
+                source_pool.append(
+                    {
+                        "theme_id": theme.theme_id,
+                        "theme_label": theme.label,
+                        "theme_temperature": float(theme.temperature),
+                        "article": article,
+                        "text": text,
+                        "region": self._primary_region(article.region_tags, text),
+                        "content_types": self._headline_content_types(text),
+                        "source_type": self._source_type(article.source),
+                    }
+                )
+
+        source_pool.sort(
+            key=lambda item: (item["article"].published_at, float(item["article"].relevance_score)),
+            reverse=True,
+        )
+        return live, source_pool
+
+    async def _collect_navigator_source_pool_with_backfill(
+        self,
+        *,
+        window_hours: int,
+        limit_per_theme: int,
+    ) -> tuple[Any, list[dict[str, Any]]]:
+        live, source_pool = await self._collect_navigator_source_pool(
+            window_hours=window_hours,
+            limit_per_theme=limit_per_theme,
+        )
+        if source_pool:
+            return live, source_pool
+
+        for fallback_window in (168, 720, 8760):
+            if fallback_window <= int(window_hours):
+                continue
+            fallback_live, fallback_pool = await self._collect_navigator_source_pool(
+                window_hours=fallback_window,
+                limit_per_theme=limit_per_theme,
+            )
+            if fallback_pool:
+                return fallback_live, fallback_pool
+        return live, source_pool
+
+    def _sanitize_navigator_filters(self, filters: NewsNavigatorFilters | None) -> NewsNavigatorFilters:
+        value = filters or NewsNavigatorFilters()
+        normalized_content = []
+        seen_content: set[str] = set()
+        for item in value.content_types:
+            key = self._normalize_content_type(item)
+            if not key or key in seen_content:
+                continue
+            seen_content.add(key)
+            normalized_content.append(key)
+
+        normalized_source_types = []
+        seen_source_types: set[str] = set()
+        for item in value.source_types:
+            key = self._normalize_source_type(item)
+            if not key or key in seen_source_types:
+                continue
+            seen_source_types.add(key)
+            normalized_source_types.append(key)
+
+        return NewsNavigatorFilters(
+            country=str(value.country or "").strip(),
+            region=str(value.region or "").strip(),
+            content_types=normalized_content,
+            source_types=normalized_source_types,
+            query=str(value.query or "").strip(),
+        )
+
+    def _has_active_news_filters(self, filters: NewsNavigatorFilters) -> bool:
+        return bool(
+            filters.country.strip()
+            or filters.region.strip()
+            or filters.query.strip()
+            or filters.content_types
+            or filters.source_types
+        )
+
+    def _apply_news_filters(
+        self,
+        *,
+        rows: list[dict[str, Any]],
+        filters: NewsNavigatorFilters,
+    ) -> list[dict[str, Any]]:
+        if not rows:
+            return []
+
+        normalized_region = self._normalize_region(filters.region)
+        required_content = {self._normalize_content_type(item) for item in filters.content_types if item}
+        required_source_types = {self._normalize_source_type(item) for item in filters.source_types if item}
+        search_terms = _extract_keywords(filters.query)[:8]
+        country = str(filters.country or "").strip().lower()
+
+        selected: list[dict[str, Any]] = []
+        for row in rows:
+            text = str(row.get("text", "")).lower()
+            article = row.get("article")
+            if article is None:
+                continue
+
+            if country and not self._matches_country(country=country, text=text):
+                continue
+            if normalized_region:
+                row_region = self._normalize_region(str(row.get("region", "")))
+                region_tags = [self._normalize_region(tag) for tag in getattr(article, "region_tags", [])]
+                if row_region != normalized_region and normalized_region not in region_tags:
+                    continue
+            if required_content:
+                row_content = {self._normalize_content_type(item) for item in row.get("content_types", []) if item}
+                if not row_content.intersection(required_content):
+                    continue
+            if required_source_types:
+                row_source_type = self._normalize_source_type(str(row.get("source_type", "")))
+                if row_source_type not in required_source_types:
+                    continue
+            if search_terms and not all(term in text for term in search_terms):
+                continue
+
+            selected.append(row)
+        return selected
+
+    def _headline_content_types(self, text: str) -> list[str]:
+        content_map: dict[str, tuple[str, ...]] = {
+            "macroeconomic_releases": (
+                "inflation",
+                "cpi",
+                "ppi",
+                "gdp",
+                "pmi",
+                "unemployment",
+                "payroll",
+                "retail sales",
+                "economic data",
+                "macro release",
+            ),
+            "central_bank_commentary": (
+                "central bank",
+                "fomc",
+                "fed",
+                "ecb",
+                "boe",
+                "boj",
+                "pboc",
+                "rate decision",
+                "governor",
+                "minutes",
+            ),
+            "geopolitical_developments": (
+                "geopolitical",
+                "war",
+                "conflict",
+                "sanction",
+                "ceasefire",
+                "military",
+                "election",
+                "diplomatic",
+            ),
+            "regulatory_announcements": (
+                "regulator",
+                "regulatory",
+                "regulation",
+                "sec",
+                "fca",
+                "esma",
+                "rulemaking",
+                "compliance",
+                "antitrust",
+            ),
+            "sector_specific_events": (
+                "sector",
+                "banking",
+                "technology",
+                "semiconductor",
+                "energy",
+                "healthcare",
+                "real estate",
+                "automotive",
+            ),
+            "fiscal_policy": (
+                "fiscal",
+                "budget",
+                "tax",
+                "deficit",
+                "spending",
+                "debt issuance",
+                "stimulus",
+            ),
+            "trade_policy": (
+                "trade",
+                "tariff",
+                "import",
+                "export",
+                "customs",
+                "trade deal",
+                "supply chain",
+            ),
+            "market_volatility": (
+                "volatility",
+                "vix",
+                "selloff",
+                "risk-off",
+                "drawdown",
+                "whipsaw",
+                "panic",
+            ),
+        }
+        types = [label for label, terms in content_map.items() if any(term in text for term in terms)]
+        return types or ["market_developments"]
+
+    def _normalize_content_type(self, value: str) -> str:
+        raw = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+        aliases = {
+            "macro": "macroeconomic_releases",
+            "macro_release": "macroeconomic_releases",
+            "macroeconomic": "macroeconomic_releases",
+            "central_bank": "central_bank_commentary",
+            "central_bank_comments": "central_bank_commentary",
+            "geopolitics": "geopolitical_developments",
+            "geopolitical": "geopolitical_developments",
+            "regulatory": "regulatory_announcements",
+            "regulation": "regulatory_announcements",
+            "sector": "sector_specific_events",
+            "sector_specific": "sector_specific_events",
+            "fiscal": "fiscal_policy",
+            "trade": "trade_policy",
+            "volatility": "market_volatility",
+        }
+        return aliases.get(raw, raw)
+
+    def _source_type(self, source: str) -> str:
+        normalized = str(source or "").strip().lower()
+        if "rss" in normalized:
+            return "rss"
+        if any(key in normalized for key in ("reuters", "bloomberg", "ft", "wsj", "ap", "nikkei")):
+            return "wire"
+        if any(
+            key in normalized
+            for key in ("federal reserve", "ecb", "bank of", "imf", "world bank", "oecd", "treasury", "bis")
+        ):
+            return "institutional"
+        return "publisher"
+
+    def _normalize_source_type(self, value: str) -> str:
+        raw = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+        aliases = {
+            "news_wire": "wire",
+            "institution": "institutional",
+            "institutional_source": "institutional",
+            "publisher_source": "publisher",
+        }
+        return aliases.get(raw, raw)
+
+    def _primary_region(self, region_tags: list[str], text: str) -> str:
+        aliases = {
+            "us": "united_states",
+            "united_states": "united_states",
+            "europe": "europe",
+            "uk": "europe",
+            "china": "china",
+            "japan": "japan",
+            "middleeast": "middle_east",
+            "middle_east": "middle_east",
+            "em": "emerging_markets",
+            "emerging_markets": "emerging_markets",
+            "latam": "latin_america",
+            "latin_america": "latin_america",
+            "asia": "asia_pacific",
+            "asia_pacific": "asia_pacific",
+        }
+        for tag in region_tags:
+            normalized_tag = self._normalize_region(tag)
+            if normalized_tag:
+                return normalized_tag
+
+        text_checks = {
+            "united_states": ("united states", "u.s.", "usa", "fed"),
+            "europe": ("europe", "eurozone", "ecb", "brussels"),
+            "china": ("china", "beijing", "pboc"),
+            "japan": ("japan", "boj", "tokyo"),
+            "middle_east": ("middle east", "gulf", "riyadh", "uae"),
+            "emerging_markets": ("emerging market", "em ", "frontier market"),
+            "latin_america": ("latin america", "latam", "brazil", "mexico"),
+            "asia_pacific": ("asia-pacific", "asia pacific", "asean"),
+        }
+        for region, terms in text_checks.items():
+            if any(term in text for term in terms):
+                return aliases.get(region, region)
+        return "global"
+
+    def _normalize_region(self, value: str) -> str:
+        raw = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+        aliases = {
+            "us": "united_states",
+            "usa": "united_states",
+            "u_s": "united_states",
+            "united_states": "united_states",
+            "north_america": "united_states",
+            "euro_area": "europe",
+            "eurozone": "europe",
+            "uk": "europe",
+            "middleeast": "middle_east",
+            "middle_east": "middle_east",
+            "em": "emerging_markets",
+            "emerging_markets": "emerging_markets",
+            "latam": "latin_america",
+            "latin_america": "latin_america",
+            "asia": "asia_pacific",
+            "asia_pacific": "asia_pacific",
+        }
+        return aliases.get(raw, raw)
+
+    def _matches_country(self, *, country: str, text: str) -> bool:
+        aliases = {
+            "us": ["us", "u.s.", "united states", "america", "usa"],
+            "usa": ["us", "u.s.", "united states", "america", "usa"],
+            "uk": ["uk", "united kingdom", "britain", "england"],
+            "uae": ["uae", "united arab emirates"],
+        }
+        terms = aliases.get(country, [country])
+        return any(term in text for term in terms)
+
+    def _recency_score(self, *, published_at: datetime, window_hours: int) -> float:
+        now = datetime.now(tz=timezone.utc)
+        age_hours = max(0.0, (now - published_at).total_seconds() / 3600.0)
+        denominator = max(24.0, float(window_hours))
+        return float(clamp(1.0 - age_hours / denominator, 0.0, 1.0))
+
     def _normalize_horizon(self, value: str) -> str:
         normalized = str(value or "").strip().lower()
         if normalized in {"daily", "day"}:
@@ -855,7 +1330,102 @@ class BriefingEngine:
             return "weekly"
         if normalized in {"monthly", "month"}:
             return "monthly"
+        if normalized in {"yearly", "year", "annual", "annually"}:
+            return "yearly"
         return "daily"
+
+    def _should_use_informational_mode(
+        self,
+        *,
+        prompt: str,
+        attachments: list[NavigatorAttachment],
+    ) -> bool:
+        if attachments:
+            return False
+
+        text = re.sub(r"\s+", " ", str(prompt or "").strip().lower())
+        if not text:
+            return False
+
+        analysis_cues = {
+            "analyze",
+            "analysis",
+            "impact",
+            "implication",
+            "scenario",
+            "risk playbook",
+            "what this means",
+            "story pipeline",
+            "conclusion",
+            "outlook",
+            "transmission",
+            "propagation",
+            "portfolio",
+            "hedge",
+        }
+        if any(cue in text for cue in analysis_cues):
+            return False
+
+        informational_cues = {
+            "what is",
+            "what are",
+            "when did",
+            "when is",
+            "where is",
+            "who is",
+            "which",
+            "latest",
+            "recent",
+            "show me",
+            "list",
+            "data",
+            "stats",
+            "information",
+            "update",
+            "headline",
+        }
+        question_starts = ("what", "when", "where", "who", "which", "is", "are", "can", "could", "did", "do")
+        starts_like_question = any(text.startswith(f"{token} ") for token in question_starts)
+        return "?" in text or starts_like_question or any(cue in text for cue in informational_cues)
+
+    def _informational_news_digest(
+        self,
+        *,
+        prompt: str,
+        horizon: str,
+        source_items: list[NavigatorSourceItem],
+        attachment_insights: list[NavigatorAttachmentInsight],
+    ) -> str:
+        top_sources = source_items[:5]
+        if not top_sources:
+            return (
+                "Summary\n"
+                f"- Request: {prompt.strip().rstrip('.')} ({horizon}).\n"
+                "- No verified source rows matched the current filter set.\n\n"
+                "What To Watch\n"
+                "- Broaden filters or choose another headline for deeper coverage."
+            )
+
+        lines = [
+            "Summary",
+            f"- Request: {prompt.strip().rstrip('.')} ({horizon}).",
+            "- Informational mode active: returning verified source evidence only.",
+            "",
+            "Verified Headlines",
+        ]
+        for row in top_sources:
+            lines.append(
+                f"- {row.title} | {row.source} | {row.published_at.strftime('%Y-%m-%d %H:%M UTC')} "
+                f"| relevance {row.relevance_score:.2f}"
+            )
+
+        if attachment_insights:
+            lines.append("")
+            lines.append("Attachment Context")
+            for insight in attachment_insights[:3]:
+                lines.append(f"- {insight.file_name}: {insight.summary}")
+
+        return "\n".join(lines)
 
     async def _generate_news_navigator_answer(
         self,
@@ -1402,10 +1972,10 @@ class BriefingEngine:
             first = chain[0].detail.split(".")[0]
             second = chain[1].detail.split(".")[0]
             third = chain[2].detail.split(".")[0]
-            return f"{first} -> {second} -> {third}"
+            return f"{first} → {second} → {third}"
         if chain:
-            return f"{label} signal -> {chain[0].detail}"
-        return f"{label} signal -> policy repricing -> cross-asset volatility"
+            return f"{label} signal → {chain[0].detail}"
+        return f"{label} signal → policy repricing → cross-asset volatility"
 
     def _factor_interpretation(self, factor: str, value: float) -> str:
         direction = "up" if value >= 0 else "down"
@@ -1792,3 +2362,4 @@ def _extract_keywords(text: str) -> list[str]:
         if len(terms) >= 20:
             break
     return terms
+

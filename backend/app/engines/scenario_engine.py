@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from datetime import datetime, timezone
 from typing import Any
@@ -29,21 +30,42 @@ class ScenarioEngine:
         self.world_pulse_engine = world_pulse_engine
         self.catalog = repository.curated.scenario_catalog()
         self.asset_sensitivity = repository.curated.asset_sensitivity()
-        self.region_map = {
-            "United States": "us",
-            "Europe": "europe",
-            "China": "china",
-            "Middle East": "middleeast",
-            "Emerging Markets": "em",
-            "Japan": "japan",
+        self.top_economies = sorted(
+            repository.curated.top_countries(),
+            key=lambda row: float(row.get("importance", 0.0)),
+            reverse=True,
+        )[:50]
+        self.region_map: dict[str, str] = {}
+        for country in self.top_economies:
+            name = str(country.get("name", "")).strip()
+            cluster = self._normalize_cluster(str(country.get("cluster", "")))
+            if name and cluster:
+                self.region_map[name] = cluster
+
+        # Backward compatibility for existing presets and bookmarked links.
+        self.region_map.update(
+            {
+                "Europe": "europe",
+                "Middle East": "middleeast",
+                "Emerging Markets": "em",
+            }
+        )
+        self.aggregate_to_economy = {
+            "europe": "Germany",
+            "middle east": "Saudi Arabia",
+            "middleeast": "Saudi Arabia",
+            "emerging markets": "India",
+            "em": "India",
         }
+        self.region_aliases = self._build_region_aliases()
+        self.economy_options = [name for name in self.region_map if name not in {"Europe", "Middle East", "Emerging Markets"}]
         self.templates = repository.curated.explanation_templates()
 
     def options(self) -> ScenarioOptionsResponse:
         return ScenarioOptionsResponse(
             drivers=self.catalog["drivers"],
             events=[event["label"] for event in self.catalog["events"]],
-            regions=self.catalog["regions"],
+            regions=self.economy_options or self.catalog["regions"],
             horizons=self.catalog["horizons"],
         )
 
@@ -100,6 +122,16 @@ class ScenarioEngine:
             execution_trace.append(log)
             if log_sink is not None:
                 await log_sink(log)
+
+        resolved_request, prompt_resolution = self._resolve_prompt_request(request)
+        request = resolved_request
+
+        if prompt_resolution:
+            await _emit(
+                "prompt_interpretation",
+                "Resolved natural-language scenario prompt into deterministic engine configuration.",
+                prompt_resolution,
+            )
 
         event = self._find_event(request.event)
         if event is None:
@@ -293,6 +325,237 @@ class ScenarioEngine:
             if event["label"] == label:
                 return event
         return None
+
+    def _normalize_cluster(self, value: str) -> str:
+        normalized = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+        aliases = {
+            "middle_east": "middleeast",
+            "middleeast": "middleeast",
+            "united_states": "us",
+            "north_america": "us",
+            "usa": "us",
+            "us": "us",
+            "europe": "europe",
+            "china": "china",
+            "japan": "japan",
+            "em": "em",
+            "emerging_markets": "em",
+        }
+        return aliases.get(normalized, normalized or "em")
+
+    def _build_region_aliases(self) -> dict[str, str]:
+        aliases: dict[str, str] = {}
+        for region in self.region_map:
+            aliases[str(region).strip().lower()] = region
+
+        aliases.update(
+            {
+                "us": "United States",
+                "u.s.": "United States",
+                "usa": "United States",
+                "uk": "United Kingdom",
+                "u.k.": "United Kingdom",
+                "uae": "United Arab Emirates",
+                "korea": "South Korea",
+                "saudi": "Saudi Arabia",
+                "europe": self.aggregate_to_economy["europe"],
+                "middle east": self.aggregate_to_economy["middle east"],
+                "middleeast": self.aggregate_to_economy["middleeast"],
+                "emerging markets": self.aggregate_to_economy["emerging markets"],
+                "em": self.aggregate_to_economy["em"],
+            }
+        )
+        return aliases
+
+    def _resolve_prompt_request(self, request: ScenarioRunRequest) -> tuple[ScenarioRunRequest, dict[str, float | int | str] | None]:
+        prompt = str(request.scenario_prompt or "").strip()
+        if not prompt:
+            return request, None
+
+        driver = request.driver if request.driver in self.catalog["drivers"] else self.catalog["drivers"][0]
+        event = request.event if self._find_event(request.event) else self._event_for_driver(driver)
+        region = self._canonical_region_name(request.region)
+        severity = int(clamp(int(request.severity), 10, 100))
+        horizon = request.horizon if request.horizon in self.catalog["horizons"] else self.catalog["horizons"][0]
+
+        parsed_driver, driver_signal_hits = self._extract_prompt_driver(prompt)
+        if parsed_driver:
+            driver = parsed_driver
+            event = self._event_for_driver(driver)
+
+        parsed_event = self._extract_prompt_event(prompt, driver=driver)
+        if parsed_event:
+            event = parsed_event
+
+        parsed_region, region_signal = self._extract_prompt_region(prompt)
+        if parsed_region:
+            region = parsed_region
+
+        severity = self._extract_prompt_severity(prompt, default=severity)
+        horizon = self._extract_prompt_horizon(prompt, default=horizon)
+
+        event_payload = self._find_event(event)
+        if event_payload is None:
+            event = self._event_for_driver(driver)
+            event_payload = self._find_event(event)
+        if event_payload is not None and str(event_payload.get("driver", "")) != driver:
+            event = self._event_for_driver(driver)
+
+        if region not in self.region_map:
+            region = self._canonical_region_name(region)
+        if region not in self.region_map:
+            region = self.economy_options[0] if self.economy_options else "United States"
+
+        resolved = ScenarioRunRequest(
+            driver=driver,
+            event=event,
+            region=region,
+            severity=int(clamp(severity, 10, 100)),
+            horizon=horizon if horizon in self.catalog["horizons"] else self.catalog["horizons"][0],
+            scenario_prompt=prompt,
+        )
+        details: dict[str, float | int | str] = {
+            "prompt_chars": len(prompt),
+            "driver": resolved.driver,
+            "event": resolved.event,
+            "region": resolved.region,
+            "severity": resolved.severity,
+            "horizon": resolved.horizon,
+            "driver_signal_hits": driver_signal_hits,
+            "region_signal": region_signal or "none",
+        }
+        return resolved, details
+
+    def _extract_prompt_driver(self, prompt: str) -> tuple[str, int]:
+        text = str(prompt or "").lower()
+        driver_terms: dict[str, tuple[str, ...]] = {
+            "Interest Rates": ("rate", "yield", "fed", "ecb", "boj", "tightening", "easing", "policy path"),
+            "Oil Price": ("oil", "crude", "brent", "wti", "energy", "opec", "gas"),
+            "Currency": ("fx", "currency", "forex", "usd", "dollar", "yen", "euro", "devaluation"),
+            "Trade Policy": ("trade", "tariff", "import", "export", "customs", "supply chain", "sanction"),
+            "Technology": ("technology", "tech", "ai", "capex", "chip", "semiconductor", "cloud"),
+            "Geopolitical": ("war", "conflict", "geopolitical", "military", "ceasefire", "border"),
+        }
+        best_driver = ""
+        best_hits = 0
+        for driver, terms in driver_terms.items():
+            hits = sum(1 for term in terms if term in text)
+            if hits > best_hits:
+                best_hits = hits
+                best_driver = driver
+        if best_driver and best_hits > 0:
+            return best_driver, best_hits
+        return "", 0
+
+    def _extract_prompt_event(self, prompt: str, *, driver: str) -> str:
+        text = str(prompt or "").lower()
+        event_terms: dict[str, tuple[str, ...]] = {
+            "Rate Hike +100bp": ("rate hike", "tightening", "hawkish", "yield spike", "policy shock"),
+            "Oil Spike to $120": ("oil spike", "energy shock", "crude", "brent", "wti", "supply disruption"),
+            "USD Surge +15%": ("usd surge", "dollar strength", "fx shock", "currency shock", "dxy"),
+            "Tariff Escalation": ("tariff", "trade war", "import duty", "export restriction", "trade restriction"),
+            "AI Capex Boom": ("ai boom", "ai capex", "semiconductor surge", "chip investment", "datacenter build"),
+            "Regional Conflict": ("regional conflict", "war", "military", "geopolitical escalation", "missile"),
+        }
+        for event_label, terms in event_terms.items():
+            if any(term in text for term in terms):
+                return event_label
+        return self._event_for_driver(driver)
+
+    def _extract_prompt_region(self, prompt: str) -> tuple[str, str]:
+        text = str(prompt or "").lower()
+        alias_keys = sorted(self.region_aliases.keys(), key=len, reverse=True)
+        for alias in alias_keys:
+            if self._contains_prompt_token(text, alias):
+                name = self.region_aliases[alias]
+                return self._canonical_region_name(name), alias
+        return "", ""
+
+    def _extract_prompt_severity(self, prompt: str, *, default: int) -> int:
+        text = str(prompt or "").lower()
+        pct_match = re.search(r"(\d{1,3})\s*%", text)
+        if pct_match:
+            return int(clamp(int(pct_match.group(1)), 10, 100))
+
+        bp_match = re.search(r"(\d{2,3})\s*bp", text)
+        if bp_match:
+            bps = int(bp_match.group(1))
+            scaled = int(round(bps * 0.7))
+            return int(clamp(scaled, 10, 100))
+
+        if any(token in text for token in ("extreme", "severe", "aggressive", "critical")):
+            return 88
+        if any(token in text for token in ("high", "significant", "strong", "stress test")):
+            return 76
+        if any(token in text for token in ("moderate", "base case", "baseline")):
+            return 60
+        if any(token in text for token in ("mild", "contained", "limited", "low")):
+            return 44
+        return int(clamp(default, 10, 100))
+
+    def _extract_prompt_horizon(self, prompt: str, *, default: str) -> str:
+        text = str(prompt or "").lower()
+        month_match = re.search(r"(\d{1,2})\s*(month|months|mo)\b", text)
+        if month_match:
+            return self._closest_horizon(int(month_match.group(1)))
+
+        year_match = re.search(r"(\d{1,2})\s*(year|years|yr|yrs)\b", text)
+        if year_match:
+            years = int(year_match.group(1))
+            return self._closest_horizon(years * 12)
+
+        if "short term" in text or "near term" in text:
+            return self._closest_horizon(3)
+        if "medium term" in text:
+            return self._closest_horizon(12)
+        if "long term" in text:
+            return self._closest_horizon(24)
+        return default if default in self.catalog["horizons"] else self.catalog["horizons"][0]
+
+    def _closest_horizon(self, months: int) -> str:
+        month_map = {
+            label: int(value)
+            for label, value in self.catalog.get("horizon_months", {}).items()
+            if isinstance(value, (int, float))
+        }
+        if not month_map:
+            return self.catalog["horizons"][0]
+        nearest = min(month_map.items(), key=lambda row: abs(int(row[1]) - int(months)))
+        return nearest[0]
+
+    def _canonical_region_name(self, value: str) -> str:
+        raw = str(value or "").strip()
+        if not raw:
+            return self.economy_options[0] if self.economy_options else "United States"
+        lowered = raw.lower()
+        if lowered in self.aggregate_to_economy:
+            mapped = self.aggregate_to_economy[lowered]
+            if mapped in self.region_map:
+                return mapped
+
+        alias_match = self.region_aliases.get(lowered)
+        if alias_match:
+            return alias_match
+
+        for region_name in self.region_map:
+            if region_name.lower() == lowered:
+                return region_name
+        return raw
+
+    def _contains_prompt_token(self, text: str, token: str) -> bool:
+        if not token:
+            return False
+        normalized = token.lower().strip()
+        if normalized in {"u.s.", "u.k."}:
+            return normalized in text
+        pattern = r"\b" + re.escape(normalized).replace(r"\ ", r"\s+") + r"\b"
+        return re.search(pattern, text) is not None
+
+    def _event_for_driver(self, driver: str) -> str:
+        for event in self.catalog["events"]:
+            if str(event.get("driver", "")) == driver:
+                return str(event["label"])
+        return str(self.catalog["events"][0]["label"])
 
     def _build_graph_output(
         self,

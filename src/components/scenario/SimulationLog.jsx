@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef } from "react";
 import { TerminalSquare } from "lucide-react";
 
 const STAGE_COLORS = {
+  prompt_interpretation: "text-cyan-100",
   validation: "text-zinc-200",
   baseline: "text-zinc-200",
   shock_injection: "text-zinc-100",

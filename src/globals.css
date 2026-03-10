@@ -2,6 +2,7 @@
 @tailwind base;
 
 :root {
+  --atlas-font-family: "Sora", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --atlas-bg-0: #030303;
   --atlas-bg-1: #070707;
   --atlas-bg-2: #0d0d0d;
@@ -23,7 +24,7 @@
 @layer base {
   * {
     @apply border-border;
-    font-family: "Sora", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    font-family: var(--atlas-font-family);
   }
 
   html {
@@ -36,7 +37,7 @@
     min-height: 100vh;
     overflow-x: clip;
     color: var(--atlas-text);
-    font-family: "Sora", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    font-family: var(--atlas-font-family);
     background:
       radial-gradient(circle at 15% -10%, rgba(255, 255, 255, 0.18), transparent 36%),
       radial-gradient(circle at 88% 110%, rgba(255, 255, 255, 0.06), transparent 38%),
@@ -47,8 +48,15 @@
   h2,
   h3,
   h4 {
-    font-family: "Sora", "Segoe UI", sans-serif;
+    font-family: var(--atlas-font-family);
     letter-spacing: -0.015em;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font-family: var(--atlas-font-family);
   }
 }
 
@@ -339,7 +347,7 @@
 /* Leaflet overrides */
 .leaflet-container {
   background: #090909 !important;
-  font-family: "Sora", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--atlas-font-family);
 }
 
 .leaflet-tile-pane {

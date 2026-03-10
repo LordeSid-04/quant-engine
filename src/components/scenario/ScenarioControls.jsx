@@ -9,7 +9,16 @@ const triggerStyle =
 const fieldShell =
   "rounded-xl border border-white/14 bg-gradient-to-r from-white/[0.07] to-white/[0.02] p-2.5 shadow-[0_12px_28px_rgba(0,0,0,0.38)] backdrop-blur-xl";
 
-export default function ScenarioControls({ config, setConfig, onRun, onReset, isRunning, options }) {
+export default function ScenarioControls({
+  config,
+  setConfig,
+  scenarioPrompt,
+  setScenarioPrompt,
+  onRun,
+  onReset,
+  isRunning,
+  options,
+}) {
   const drivers = options?.drivers ?? [];
   const events = options?.events ?? [];
   const regions = options?.regions ?? [];
@@ -29,6 +38,19 @@ export default function ScenarioControls({ config, setConfig, onRun, onReset, is
       </div>
 
       <div className="space-y-4">
+        <div className={fieldShell}>
+          <label className="mb-1.5 block text-[11px] uppercase tracking-[0.14em] text-zinc-500">Scenario Prompt</label>
+          <textarea
+            value={scenarioPrompt}
+            onChange={(event) => setScenarioPrompt(event.target.value)}
+            placeholder="Example: Simulate a severe oil shock in Saudi Arabia over 6 months."
+            className="atlas-focus-ring min-h-[88px] w-full resize-y rounded-lg border border-white/15 bg-black/35 p-2.5 text-xs leading-relaxed text-zinc-100 placeholder:text-zinc-500"
+          />
+          <div className="mt-1 text-[10px] text-zinc-500">
+            Prompt parser deterministically maps this to driver, event, economy, severity, and horizon.
+          </div>
+        </div>
+
         <div className={fieldShell}>
           <label className="mb-1.5 block text-[11px] uppercase tracking-[0.14em] text-zinc-500">Macro Driver</label>
           <Select value={config.driver} onValueChange={(v) => setConfig({ ...config, driver: v })}>
@@ -62,12 +84,14 @@ export default function ScenarioControls({ config, setConfig, onRun, onReset, is
         </div>
 
         <div className={fieldShell}>
-          <label className="mb-1.5 block text-[11px] uppercase tracking-[0.14em] text-zinc-500">Origin Region</label>
+          <label className="mb-1.5 block text-[11px] uppercase tracking-[0.14em] text-zinc-500">
+            Origin Economy (Top 50)
+          </label>
           <Select value={config.region} onValueChange={(v) => setConfig({ ...config, region: v })}>
             <SelectTrigger className={triggerStyle}>
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="border border-white/14 bg-[#080d17]/95 text-zinc-100 shadow-[0_20px_44px_rgba(0,0,0,0.5)] backdrop-blur-xl">
+            <SelectContent className="max-h-[320px] border border-white/14 bg-[#080d17]/95 text-zinc-100 shadow-[0_20px_44px_rgba(0,0,0,0.5)] backdrop-blur-xl">
               {regions.map((r) => (
                 <SelectItem key={r} value={r} className="rounded-md text-zinc-200 focus:bg-white/[0.12] focus:text-zinc-50">
                   {r}
