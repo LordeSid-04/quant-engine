@@ -4,6 +4,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Slider } from "@/components/ui/slider";
 import { Play, RotateCcw } from "lucide-react";
 
+const triggerStyle =
+  "h-10 rounded-lg border border-white/15 bg-black/35 px-3 text-zinc-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] transition duration-200 hover:border-white/25 hover:bg-black/45 focus:ring-0";
+const fieldShell =
+  "rounded-xl border border-white/14 bg-gradient-to-r from-white/[0.07] to-white/[0.02] p-2.5 shadow-[0_12px_28px_rgba(0,0,0,0.38)] backdrop-blur-xl";
+
 export default function ScenarioControls({ config, setConfig, onRun, onReset, isRunning, options }) {
   const drivers = options?.drivers ?? [];
   const events = options?.events ?? [];
@@ -11,24 +16,28 @@ export default function ScenarioControls({ config, setConfig, onRun, onReset, is
   const horizons = options?.horizons ?? [];
 
   return (
-    <div className="atlas-glass rounded-2xl border border-white/[0.08] p-5 space-y-4">
+    <div className="space-y-5 rounded-2xl p-5 sm:p-6">
       <div className="mb-1 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-white tracking-tight">Scenario Configuration</h2>
-        <button onClick={onReset} className="text-xs text-slate-500 hover:text-slate-300 flex items-center gap-1 transition-colors">
-          <RotateCcw className="w-3 h-3" /> Reset
+        <h2 className="text-sm font-semibold tracking-tight text-zinc-100">Scenario Configuration</h2>
+        <button
+          onClick={onReset}
+          className="atlas-focus-ring flex items-center gap-1 rounded-md px-1 py-0.5 text-xs text-zinc-500 transition-colors hover:text-zinc-100"
+        >
+          <RotateCcw className="h-3 w-3" />
+          Reset
         </button>
       </div>
 
-      <div className="space-y-3.5">
-        <div>
-          <label className="text-[11px] uppercase tracking-wider text-slate-500 mb-1.5 block">Macro Driver</label>
+      <div className="space-y-4">
+        <div className={fieldShell}>
+          <label className="mb-1.5 block text-[11px] uppercase tracking-[0.14em] text-zinc-500">Macro Driver</label>
           <Select value={config.driver} onValueChange={(v) => setConfig({ ...config, driver: v })}>
-            <SelectTrigger className="h-10 bg-white/[0.03] border-white/[0.1] text-slate-200 text-sm">
+            <SelectTrigger className={triggerStyle}>
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="bg-slate-900 border-slate-700">
+            <SelectContent className="border border-white/14 bg-[#080d17]/95 text-zinc-100 shadow-[0_20px_44px_rgba(0,0,0,0.5)] backdrop-blur-xl">
               {drivers.map((d) => (
-                <SelectItem key={d} value={d} className="text-slate-200 focus:bg-white/10">
+                <SelectItem key={d} value={d} className="rounded-md text-zinc-200 focus:bg-white/[0.12] focus:text-zinc-50">
                   {d}
                 </SelectItem>
               ))}
@@ -36,15 +45,15 @@ export default function ScenarioControls({ config, setConfig, onRun, onReset, is
           </Select>
         </div>
 
-        <div>
-          <label className="text-[11px] uppercase tracking-wider text-slate-500 mb-1.5 block">Trigger Event</label>
+        <div className={fieldShell}>
+          <label className="mb-1.5 block text-[11px] uppercase tracking-[0.14em] text-zinc-500">Trigger Event</label>
           <Select value={config.event} onValueChange={(v) => setConfig({ ...config, event: v })}>
-            <SelectTrigger className="h-10 bg-white/[0.03] border-white/[0.1] text-slate-200 text-sm">
+            <SelectTrigger className={triggerStyle}>
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="bg-slate-900 border-slate-700">
+            <SelectContent className="border border-white/14 bg-[#080d17]/95 text-zinc-100 shadow-[0_20px_44px_rgba(0,0,0,0.5)] backdrop-blur-xl">
               {events.map((e) => (
-                <SelectItem key={e} value={e} className="text-slate-200 focus:bg-white/10">
+                <SelectItem key={e} value={e} className="rounded-md text-zinc-200 focus:bg-white/[0.12] focus:text-zinc-50">
                   {e}
                 </SelectItem>
               ))}
@@ -52,15 +61,15 @@ export default function ScenarioControls({ config, setConfig, onRun, onReset, is
           </Select>
         </div>
 
-        <div>
-          <label className="text-[11px] uppercase tracking-wider text-slate-500 mb-1.5 block">Origin Region</label>
+        <div className={fieldShell}>
+          <label className="mb-1.5 block text-[11px] uppercase tracking-[0.14em] text-zinc-500">Origin Region</label>
           <Select value={config.region} onValueChange={(v) => setConfig({ ...config, region: v })}>
-            <SelectTrigger className="h-10 bg-white/[0.03] border-white/[0.1] text-slate-200 text-sm">
+            <SelectTrigger className={triggerStyle}>
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="bg-slate-900 border-slate-700">
+            <SelectContent className="border border-white/14 bg-[#080d17]/95 text-zinc-100 shadow-[0_20px_44px_rgba(0,0,0,0.5)] backdrop-blur-xl">
               {regions.map((r) => (
-                <SelectItem key={r} value={r} className="text-slate-200 focus:bg-white/10">
+                <SelectItem key={r} value={r} className="rounded-md text-zinc-200 focus:bg-white/[0.12] focus:text-zinc-50">
                   {r}
                 </SelectItem>
               ))}
@@ -68,8 +77,8 @@ export default function ScenarioControls({ config, setConfig, onRun, onReset, is
           </Select>
         </div>
 
-        <div>
-          <label className="text-[11px] uppercase tracking-wider text-slate-500 mb-1.5 block">Severity: {config.severity}%</label>
+        <div className={fieldShell}>
+          <label className="mb-1.5 block text-[11px] uppercase tracking-[0.14em] text-zinc-500">Severity: {config.severity}%</label>
           <Slider
             value={[config.severity]}
             onValueChange={([v]) => setConfig({ ...config, severity: v })}
@@ -80,15 +89,15 @@ export default function ScenarioControls({ config, setConfig, onRun, onReset, is
           />
         </div>
 
-        <div>
-          <label className="text-[11px] uppercase tracking-wider text-slate-500 mb-1.5 block">Time Horizon</label>
+        <div className={fieldShell}>
+          <label className="mb-1.5 block text-[11px] uppercase tracking-[0.14em] text-zinc-500">Time Horizon</label>
           <Select value={config.horizon} onValueChange={(v) => setConfig({ ...config, horizon: v })}>
-            <SelectTrigger className="h-10 bg-white/[0.03] border-white/[0.1] text-slate-200 text-sm">
+            <SelectTrigger className={triggerStyle}>
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="bg-slate-900 border-slate-700">
+            <SelectContent className="border border-white/14 bg-[#080d17]/95 text-zinc-100 shadow-[0_20px_44px_rgba(0,0,0,0.5)] backdrop-blur-xl">
               {horizons.map((h) => (
-                <SelectItem key={h} value={h} className="text-slate-200 focus:bg-white/10">
+                <SelectItem key={h} value={h} className="rounded-md text-zinc-200 focus:bg-white/[0.12] focus:text-zinc-50">
                   {h}
                 </SelectItem>
               ))}
@@ -100,9 +109,9 @@ export default function ScenarioControls({ config, setConfig, onRun, onReset, is
       <Button
         onClick={onRun}
         disabled={isRunning}
-        className="h-11 w-full gap-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/20 hover:from-cyan-400 hover:to-blue-500"
+        className="h-11 w-full gap-2 rounded-xl border border-white/24 bg-gradient-to-r from-white/[0.14] to-white/[0.08] text-zinc-100 shadow-[0_14px_34px_rgba(0,0,0,0.38)] transition duration-300 hover:border-white/34 hover:from-white/[0.2] hover:to-white/[0.1]"
       >
-        <Play className="w-4 h-4" />
+        <Play className="h-4 w-4" />
         {isRunning ? "Simulating..." : "Run Scenario"}
       </Button>
     </div>

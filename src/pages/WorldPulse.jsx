@@ -1,26 +1,29 @@
-import React, { startTransition, useDeferredValue, useEffect, useMemo, useState } from "react";
+import React, { startTransition, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   Activity,
   ArrowRight,
   BookOpenText,
   CheckCircle2,
-  ChevronDown,
-  ChevronUp,
-  Compass,
+  Expand,
   FlaskConical,
-  Newspaper,
+  Globe2,
+  Minimize2,
   ShieldAlert,
   Sparkles,
+  X,
 } from "lucide-react";
-import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
 import GlobeMap from "@/components/worldpulse/GlobeMap";
 import DevelopmentStoryGraph from "@/components/worldpulse/DevelopmentStoryGraph";
 import CountryRelationPanel from "@/components/worldpulse/CountryRelationPanel";
-import { createPageUrl } from "@/utils";
+import WorldPulseHero from "@/components/worldpulse/WorldPulseHero";
+import NewsNavigatorPanel from "@/components/worldpulse/NewsNavigatorPanel";
+import { StatBadge } from "@/components/premium/SurfaceCard";
 import {
   fetchBriefingFeedStatus,
+  fetchCountryDataProof,
   fetchCountryRelation,
   fetchDailyBriefing,
   fetchDevelopmentDetail,
@@ -29,19 +32,22 @@ import {
   getCachedDevelopmentDetail,
 } from "@/api/atlasClient";
 
+const PANEL_CLASS = "rounded-2xl border border-white/10";
+const INNER_PANEL_CLASS = "rounded-xl border border-white/10";
+
 function scoreTone(value) {
   const score = Number(value || 0);
-  if (score >= 75) return "text-rose-200";
-  if (score >= 55) return "text-amber-200";
-  return "text-cyan-200";
+  if (score >= 75) return "text-zinc-100";
+  if (score >= 55) return "text-zinc-300";
+  return "text-zinc-400";
 }
 
 function stateTone(state) {
   const normalized = String(state || "").toLowerCase();
-  if (normalized.includes("hot")) return "text-rose-200";
-  if (normalized.includes("cool")) return "text-sky-200";
-  if (normalized.includes("heat")) return "text-amber-200";
-  return "text-slate-200";
+  if (normalized.includes("hot")) return "text-zinc-100";
+  if (normalized.includes("cool")) return "text-zinc-300";
+  if (normalized.includes("heat")) return "text-zinc-200";
+  return "text-zinc-400";
 }
 
 function toNumeric(value, fallback = 0) {
@@ -58,25 +64,233 @@ function formatClock(value) {
   });
 }
 
-function StatPill({ label, value, tone = "text-slate-200" }) {
+function formatRelativeTime(value) {
+  if (!value) return "recently";
+  const diffMs = Date.now() - new Date(value).getTime();
+  if (!Number.isFinite(diffMs) || diffMs < 0) return "just now";
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function publicLensText(value) {
+  const text = String(value || "").trim();
+  if (!text) return "This signal can affect borrowing costs, prices, and overall market confidence.";
+  return text
+    .replace(/duration/gi, "bond prices")
+    .replace(/liquidity/gi, "cash availability")
+    .replace(/volatility/gi, "price swings")
+    .replace(/reprice|repricing/gi, "reset")
+    .replace(/FX/gi, "currencies");
+}
+
+function ProofConsoleOverlay({ open, onToggle, onClose, selectedProof, healthySources, totalSources, feedStatus }) {
   return (
-    <div className="rounded-full border border-white/[0.08] bg-white/[0.03] px-3 py-1.5">
-      <span className="text-[10px] uppercase tracking-[0.12em] text-slate-500">{label}</span>
-      <span className={`ml-2 text-xs font-medium ${tone}`}>{value}</span>
+    <div className="pointer-events-none fixed bottom-5 right-4 z-[65] flex max-w-[94vw] flex-col items-end gap-3">
+      <AnimatePresence>
+        {open ? (
+          <motion.div
+            initial={{ opacity: 0, y: 14, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 14, scale: 0.98 }}
+            transition={{ duration: 0.18, ease: "easeOut" }}
+            className="pointer-events-auto w-[min(430px,calc(100vw-1.5rem))] rounded-2xl border border-white/15 bg-black/45 p-4 shadow-[0_18px_48px_rgba(0,0,0,0.45)] backdrop-blur-xl"
+          >
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-zinc-100">
+                <CheckCircle2 className="h-4 w-4 text-zinc-200" />
+                Proof Console
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                className="atlas-focus-ring inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-white/[0.04] text-zinc-300 transition hover:bg-white/[0.08] hover:text-zinc-100"
+                aria-label="Close proof console"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {selectedProof ? (
+              <div className="space-y-3">
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Executive Readout</div>
+                  <div className="mt-1 text-sm leading-relaxed text-zinc-200">{selectedProof.conclusion.story}</div>
+                  <div className="mt-1 text-[11px] leading-relaxed text-zinc-400">{selectedProof.conclusion.why_now}</div>
+                </div>
+
+                <div className="border-t border-white/10 pt-3">
+                  <div className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Source Evidence</div>
+                  <div className="mt-1 max-h-[180px] space-y-2 overflow-auto pr-1">
+                    {(selectedProof.source_evidence || []).slice(0, 4).map((source) => (
+                      <a
+                        key={source.article_id}
+                        href={source.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block rounded-md border border-white/12 bg-white/[0.02] px-2.5 py-2 transition hover:border-white/25 hover:bg-white/[0.05]"
+                      >
+                        <div className="text-[11px] text-zinc-200">{source.title}</div>
+                        <div className="mt-1 text-[10px] text-zinc-500">
+                          {source.source} | {new Date(source.published_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        </div>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 border-t border-white/10 pt-3 sm:grid-cols-2">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Signal Validation</div>
+                    {(selectedProof.model_evidence || []).slice(0, 1).map((row, idx) => (
+                      <div key={`signal-validation-${idx}`} className="mt-1 text-[11px] leading-relaxed text-zinc-300">
+                        <div className="font-semibold text-zinc-100">Confidence {(row.score_confidence * 100).toFixed(0)}%</div>
+                        <div className="text-zinc-500">Top signals: {(row.top_features || []).slice(0, 3).join(", ") || "n/a"}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div>
+                    <div className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Market Signals</div>
+                    <div className="mt-1 space-y-1">
+                      {(selectedProof.market_evidence || []).slice(0, 2).map((item, idx) => (
+                        <div key={`${item.signal}-${idx}`} className="text-[11px] leading-relaxed text-zinc-300">
+                          <span className="font-medium text-zinc-100">{item.signal}</span>: {item.value} ({item.interpretation})
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-white/10 pt-2 text-xs text-zinc-400">
+                  <span className={healthySources > 0 ? "text-emerald-200" : "text-amber-200"}>
+                    {healthySources}/{totalSources || 0}
+                  </span>{" "}
+                  reliable sources healthy. Polling every {feedStatus?.polling_interval_seconds || 60}s.
+                </div>
+              </div>
+            ) : (
+              <div className="text-xs text-zinc-500">Proof data unavailable.</div>
+            )}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      <button
+        type="button"
+        onClick={onToggle}
+        className="pointer-events-auto atlas-focus-ring inline-flex items-center gap-2 rounded-full border border-white/20 bg-black/35 px-4 py-2 text-xs font-medium uppercase tracking-[0.12em] text-zinc-100 transition hover:bg-black/55"
+      >
+        <CheckCircle2 className="h-4 w-4" />
+        <span>{open ? "Hide Proof Console" : "Proof Console"}</span>
+      </button>
     </div>
   );
 }
 
-export default function WorldPulse() {
+function CountryIntelCard({ country, intelRows, healthySources, totalSources, countryProof, isLoadingProof, onClose }) {
+  if (!country) return null;
+
+  return (
+    <div className="absolute bottom-5 left-5 z-[1300] w-[min(430px,calc(100%-2.5rem))] overflow-hidden rounded-2xl border border-white/15 bg-black/70 p-4 shadow-[0_24px_54px_rgba(0,0,0,0.55)] backdrop-blur-xl">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Country Intelligence</div>
+          <div className="mt-1 flex items-center gap-2 text-base font-semibold text-zinc-100">
+            <Globe2 className="h-4 w-4 text-zinc-300" />
+            {country.name}
+          </div>
+          <div className="mt-1 text-[11px] text-zinc-400">
+            Heat {country.heat}/100 | Confidence {country.confidence}%
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="atlas-focus-ring inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-white/[0.05] text-zinc-300 transition hover:bg-white/[0.12] hover:text-zinc-100"
+          aria-label="Close country intelligence"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      <p className="mt-3 text-[12px] leading-relaxed text-zinc-300">{country.narrative}</p>
+
+      <div className="mt-3 rounded-lg border border-white/12 bg-white/[0.03] p-2.5">
+        <div className="text-[10px] uppercase tracking-[0.11em] text-zinc-500">Reliable Feed Snapshot</div>
+        <div className="mt-1 text-[11px] text-zinc-300">
+          {healthySources}/{totalSources || "--"} healthy sources powering briefing evidence.
+        </div>
+      </div>
+
+      <div className="mt-3">
+        <div className="text-[10px] uppercase tracking-[0.11em] text-zinc-500">Latest News Evidence</div>
+        <div className="mt-1.5 max-h-[190px] space-y-2 overflow-auto pr-1">
+          {intelRows.length ? (
+            intelRows.map((item) => (
+              <a
+                key={item.article_id}
+                href={item.url}
+                target="_blank"
+                rel="noreferrer"
+                className="block rounded-lg border border-white/12 bg-white/[0.03] px-2.5 py-2 transition hover:border-white/25 hover:bg-white/[0.08]"
+              >
+                <div className="line-clamp-2 text-[11px] text-zinc-100">{item.title}</div>
+                <div className="mt-1 text-[10px] text-zinc-500">
+                  {item.source} | {item.developmentLabel || "Signal Desk"} |{" "}
+                  {new Date(item.published_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                </div>
+              </a>
+            ))
+          ) : (
+            <div className="text-[11px] text-zinc-500">No verified country-specific source rows yet.</div>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-3 border-t border-white/10 pt-3">
+        <div className="text-[10px] uppercase tracking-[0.11em] text-zinc-500">Backend Data Proof</div>
+        {isLoadingProof ? (
+          <div className="mt-1 text-[11px] text-zinc-500">Loading source provenance...</div>
+        ) : (
+          <div className="mt-1 space-y-1">
+            <div className="text-[11px] text-zinc-400">{countryProof?.methodology || "Deterministic proof unavailable."}</div>
+            {(countryProof?.sources || []).slice(0, 3).map((source) => (
+              <a
+                key={source.url}
+                href={source.url}
+                target="_blank"
+                rel="noreferrer"
+                className="block text-[11px] text-zinc-300 transition hover:text-zinc-100"
+              >
+                {source.name}
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function WorldPulse({ embedded = false }) {
   const cachedDailyBrief = getCachedDailyBriefing();
   const cachedFeedStatus = getCachedBriefingFeedStatus();
 
   const [selectedDevelopmentId, setSelectedDevelopmentId] = useState("");
-  const [heatBoardOpen, setHeatBoardOpen] = useState(false);
+  const [selectedThemeId, setSelectedThemeId] = useState("");
+  const [selectedDevelopmentLabel, setSelectedDevelopmentLabel] = useState("");
   const [selectedGraphNode, setSelectedGraphNode] = useState(null);
   const [mapStartCountry, setMapStartCountry] = useState(null);
   const [mapEndCountry, setMapEndCountry] = useState(null);
-  const [isMapExpanded, setIsMapExpanded] = useState(false);
+  const [mapSelectionMode, setMapSelectionMode] = useState(null);
+  const [focusedCountry, setFocusedCountry] = useState(null);
+  const [mapFullscreenOpen, setMapFullscreenOpen] = useState(false);
+  const [proofConsoleOpen, setProofConsoleOpen] = useState(false);
 
   const { data, isLoading, isError, error, isFetching } = useQuery({
     queryKey: ["briefing-daily"],
@@ -114,26 +328,72 @@ export default function WorldPulse() {
   useEffect(() => {
     if (!developments.length) {
       setSelectedDevelopmentId("");
+      setSelectedThemeId("");
+      setSelectedDevelopmentLabel("");
       return;
     }
-    if (!selectedDevelopmentId || !developments.some((item) => item.development_id === selectedDevelopmentId)) {
-      setSelectedDevelopmentId(developments[0].development_id);
+    if (selectedDevelopmentId && developments.some((item) => item.development_id === selectedDevelopmentId)) {
+      return;
     }
-  }, [developments, selectedDevelopmentId]);
+
+    if (selectedThemeId) {
+      const themeMatch = developments.find((item) => item.theme_id === selectedThemeId);
+      if (themeMatch) {
+        setSelectedDevelopmentId(themeMatch.development_id);
+        setSelectedThemeId(themeMatch.theme_id || "");
+        setSelectedDevelopmentLabel(themeMatch.label || themeMatch.title || "");
+        return;
+      }
+    }
+
+    if (selectedDevelopmentLabel) {
+      const labelNeedle = String(selectedDevelopmentLabel).toLowerCase().trim();
+      const labelMatch = developments.find((item) => {
+        const label = String(item.label || item.title || "").toLowerCase().trim();
+        return label === labelNeedle;
+      });
+      if (labelMatch) {
+        setSelectedDevelopmentId(labelMatch.development_id);
+        setSelectedThemeId(labelMatch.theme_id || "");
+        setSelectedDevelopmentLabel(labelMatch.label || labelMatch.title || "");
+        return;
+      }
+    }
+
+    setSelectedDevelopmentId(developments[0].development_id);
+    setSelectedThemeId(developments[0].theme_id);
+    setSelectedDevelopmentLabel(developments[0].label || developments[0].title || "");
+  }, [developments, selectedDevelopmentId, selectedThemeId, selectedDevelopmentLabel]);
 
   useEffect(() => {
     setSelectedGraphNode(null);
   }, [selectedDevelopmentId]);
 
   const selectedDevelopment = developmentDetail?.development || selectedDevelopmentBase;
-  const deferredSelectedDevelopment = useDeferredValue(selectedDevelopment);
   const feedStatus = feedStatusData || data?.feed_status;
   const sourceRows = Array.isArray(feedStatus?.sources) ? feedStatus.sources : [];
 
   const derivedHealthySources = sourceRows.filter((row) => Boolean(row?.is_healthy ?? row?.isHealthy)).length;
   const healthySources = toNumeric(feedStatus?.healthy_sources ?? feedStatus?.healthySources, derivedHealthySources);
   const totalSources = toNumeric(feedStatus?.total_sources ?? feedStatus?.totalSources, sourceRows.length);
-  const selectedProof = deferredSelectedDevelopment?.proof_bundle;
+  const selectedProof = selectedDevelopment?.proof_bundle;
+
+  useEffect(() => {
+    if (!selectedProof) {
+      setProofConsoleOpen(false);
+    }
+  }, [selectedProof]);
+
+  useEffect(() => {
+    if (!mapFullscreenOpen) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setMapFullscreenOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [mapFullscreenOpen]);
 
   const signalDeskRows = useMemo(() => {
     const rows = [];
@@ -157,6 +417,79 @@ export default function WorldPulse() {
     return rows.sort((a, b) => b.publishedTs - a.publishedTs).slice(0, 10);
   }, [developments]);
 
+  const developmentTape = useMemo(() => {
+    const map = new Map();
+    developments.forEach((development) => {
+      const sourceRows = (development?.proof_bundle?.source_evidence || [])
+        .map((item) => ({
+          ...item,
+          publishedTs: Date.parse(item.published_at) || 0,
+        }))
+        .sort((a, b) => b.publishedTs - a.publishedTs);
+      map.set(development.development_id, sourceRows[0] || null);
+    });
+    return map;
+  }, [developments]);
+
+  const healthySourceSet = useMemo(() => {
+    return new Set(
+      sourceRows
+        .filter((row) => Boolean(row?.is_healthy ?? row?.isHealthy))
+        .map((row) => String(row?.source || "").toLowerCase())
+        .filter(Boolean),
+    );
+  }, [sourceRows]);
+
+  const spilloverHotspots = data?.spillover_map?.hotspots || [];
+  const spilloverArcs = data?.spillover_map?.arcs || [];
+
+  const countryIntelRows = useMemo(() => {
+    if (!focusedCountry?.name) return [];
+    const countryNeedle = focusedCountry.name.toLowerCase();
+    const seen = new Set();
+    const matched = [];
+
+    developments.forEach((development) => {
+      (development?.proof_bundle?.source_evidence || []).forEach((item) => {
+        const articleId = item?.article_id;
+        if (!articleId || seen.has(articleId)) return;
+
+        const title = String(item?.title || "").toLowerCase();
+        const snippet = String(item?.snippet || "").toLowerCase();
+        if (!title.includes(countryNeedle) && !snippet.includes(countryNeedle)) return;
+
+        const sourceName = String(item?.source || "").toLowerCase();
+        if (healthySourceSet.size && !healthySourceSet.has(sourceName)) return;
+
+        seen.add(articleId);
+        matched.push({
+          ...item,
+          developmentLabel: development.label,
+        });
+      });
+    });
+
+    if (matched.length) {
+      return matched
+        .sort((a, b) => (Date.parse(b.published_at) || 0) - (Date.parse(a.published_at) || 0))
+        .slice(0, 5);
+    }
+
+    return signalDeskRows
+      .filter((row) => {
+        if (!healthySourceSet.size) return true;
+        return healthySourceSet.has(String(row?.source || "").toLowerCase());
+      })
+      .slice(0, 5);
+  }, [focusedCountry, developments, healthySourceSet, signalDeskRows]);
+
+  const { data: countryProof, isFetching: isFetchingCountryProof } = useQuery({
+    queryKey: ["world-pulse-country-proof", focusedCountry?.id],
+    queryFn: () => fetchCountryDataProof(focusedCountry.id),
+    enabled: Boolean(focusedCountry?.id),
+    staleTime: 20 * 1000,
+  });
+
   const { data: relationData, isFetching: isFetchingRelation } = useQuery({
     queryKey: ["country-relation", mapStartCountry?.id, mapEndCountry?.id],
     queryFn: () => fetchCountryRelation(mapStartCountry.id, mapEndCountry.id),
@@ -172,7 +505,7 @@ export default function WorldPulse() {
       return {
         from: mapStartCountry.id,
         to: mapEndCountry.id,
-        color: "#f59e0b",
+        color: "#fafafa",
       };
     }
     return null;
@@ -180,131 +513,172 @@ export default function WorldPulse() {
 
   const handleSelectCountry = (spot) => {
     if (!spot) return;
-    if (!mapStartCountry || mapEndCountry) {
+    setFocusedCountry(spot);
+
+    if (mapSelectionMode === "start") {
       setMapStartCountry(spot);
-      setMapEndCountry(null);
+      if (mapEndCountry?.id === spot.id) {
+        setMapEndCountry(null);
+      }
+      setMapSelectionMode(null);
       return;
     }
-    if (mapStartCountry.id === spot.id) {
-      setMapStartCountry(null);
-      setMapEndCountry(null);
+
+    if (mapSelectionMode === "end") {
+      if (mapStartCountry?.id === spot.id) {
+        setMapEndCountry(null);
+      } else {
+        setMapEndCountry(spot);
+      }
+      setMapSelectionMode(null);
       return;
     }
-    setMapEndCountry(spot);
   };
 
   const clearMapSelection = () => {
     setMapStartCountry(null);
     setMapEndCountry(null);
+    setFocusedCountry(null);
+    setMapSelectionMode(null);
   };
 
   const clearMapRelation = () => {
     setMapEndCountry(null);
   };
 
-  useEffect(() => {
-    if (!isMapExpanded) return undefined;
-    const onEscape = (event) => {
-      if (event.key === "Escape") {
-        setIsMapExpanded(false);
-      }
-    };
-    window.addEventListener("keydown", onEscape);
-    return () => window.removeEventListener("keydown", onEscape);
-  }, [isMapExpanded]);
+  const scenarioTarget = selectedDevelopment?.development_id
+    ? `/?development_id=${encodeURIComponent(selectedDevelopment.development_id)}#scenario-lab`
+    : "/#scenario-lab";
+
+  const mapInstructionText = mapSelectionMode
+    ? `Selecting ${mapSelectionMode} country: click a map pin`
+    : "Hover for country names | Use Set Start/Set End to build relation";
+
+  const renderRelationPicker = () => (
+    <div className="flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.1em]">
+      <button
+        type="button"
+        onClick={() => setMapSelectionMode("start")}
+        className={`atlas-focus-ring rounded-full border px-2.5 py-1 transition ${
+          mapSelectionMode === "start"
+            ? "border-white/40 bg-white/[0.11] text-zinc-100"
+            : "border-white/20 bg-white/[0.05] text-zinc-300 hover:border-white/30 hover:text-zinc-100"
+        }`}
+      >
+        {mapSelectionMode === "start" ? "Pick Start..." : "Set Start"}
+      </button>
+      <button
+        type="button"
+        onClick={() => setMapSelectionMode("end")}
+        className={`atlas-focus-ring rounded-full border px-2.5 py-1 transition ${
+          mapSelectionMode === "end"
+            ? "border-white/40 bg-white/[0.11] text-zinc-100"
+            : "border-white/20 bg-white/[0.05] text-zinc-300 hover:border-white/30 hover:text-zinc-100"
+        }`}
+      >
+        {mapSelectionMode === "end" ? "Pick End..." : "Set End"}
+      </button>
+      <div className="text-zinc-500">{mapStartCountry?.name ? `Start: ${mapStartCountry.name}` : "Start: --"}</div>
+      <div className="text-zinc-500">{mapEndCountry?.name ? `End: ${mapEndCountry.name}` : "End: --"}</div>
+      {(mapStartCountry || mapEndCountry) ? (
+        <button
+          type="button"
+          onClick={clearMapSelection}
+          className="atlas-focus-ring rounded-full border border-white/15 px-2.5 py-1 text-zinc-400 transition hover:border-white/28 hover:text-zinc-100"
+        >
+          Clear
+        </button>
+      ) : null}
+    </div>
+  );
+
+  const heroSpilloverPanel = (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-400">Cross Region Spillover</div>
+        <button
+          type="button"
+          onClick={() => setMapFullscreenOpen(true)}
+          className="atlas-focus-ring inline-flex items-center gap-1 rounded-full border border-white/20 bg-white/[0.04] px-3 py-1 text-[10px] uppercase tracking-[0.11em] text-zinc-200 transition hover:border-white/30 hover:bg-white/[0.08]"
+        >
+          <Expand className="h-3.5 w-3.5" />
+          Fullscreen
+        </button>
+      </div>
+      {renderRelationPicker()}
+
+      <div className="relative h-[348px] overflow-hidden rounded-2xl border border-white/12 bg-black/25 backdrop-blur-sm">
+        <GlobeMap
+          mapKey="hero-spillover-inline"
+          hotspots={spilloverHotspots}
+          arcs={spilloverArcs}
+          manualArc={manualArc}
+          onSelectCountry={handleSelectCountry}
+          instructionText={mapInstructionText}
+        />
+
+        {(mapStartCountry || relationData) && (
+          <CountryRelationPanel
+            startCountry={mapStartCountry}
+            endCountry={mapEndCountry}
+            relation={relationData || null}
+            isLoadingRelation={isFetchingRelation}
+            onClearSelection={clearMapSelection}
+            onClearRelation={clearMapRelation}
+          />
+        )}
+      </div>
+    </div>
+  );
 
   return (
-    <div className="worldpulse-shell min-h-[calc(100vh-96px)] p-3 sm:p-4 lg:p-6">
-      <div className="mx-auto max-w-[1680px] space-y-3">
-        {isMapExpanded && <style>{`.atlas-top-nav { display: none !important; }`}</style>}
+    <div className={`${embedded ? "min-h-0" : "min-h-[calc(100vh-74px)]"} px-3 py-3 sm:px-4 sm:py-4 lg:px-6 lg:py-6`}>
+      <div className="mx-auto max-w-[1650px] space-y-4">
+        <WorldPulseHero
+          headlineBrief={data?.headline_brief}
+          selectedDevelopment={selectedDevelopment}
+          themeBoard={data?.theme_board || []}
+          rightPanel={heroSpilloverPanel}
+        />
 
-        {isMapExpanded && (
-          <div className="fixed inset-0 z-[120] flex items-center justify-center px-3 pb-6 pt-3 sm:px-5 sm:pb-8 sm:pt-5 lg:px-8 lg:pb-10 lg:pt-8">
-            <button
-              type="button"
-              aria-label="Close expanded map overlay"
-              className="absolute inset-0 bg-[#020617]/65 backdrop-blur-sm"
-              onClick={() => setIsMapExpanded(false)}
-            />
-            <div className="relative w-[94vw] sm:w-[86vw] lg:w-[76vw] xl:w-[74vw]">
-              <div className="mb-2 pl-1 text-base font-medium tracking-[0.08em] text-slate-100">
-                Cross-Region Spillover
-              </div>
-              <div className="relative h-[75vh] min-h-[420px] overflow-hidden rounded-2xl border border-white/[0.12] bg-[#071124] shadow-[0_20px_70px_rgba(0,0,0,0.55)]">
-                <GlobeMap
-                  hotspots={data?.spillover_map?.hotspots || []}
-                  arcs={data?.spillover_map?.arcs || []}
-                  manualArc={manualArc}
-                  onSelectCountry={handleSelectCountry}
-                  isExpanded={isMapExpanded}
-                  onToggleExpand={() => setIsMapExpanded(false)}
-                />
+        <NewsNavigatorPanel />
 
-                {(mapStartCountry || relationData) && (
-                  <CountryRelationPanel
-                    startCountry={mapStartCountry}
-                    endCountry={mapEndCountry}
-                    relation={relationData || null}
-                    isLoadingRelation={isFetchingRelation}
-                    onClearSelection={clearMapSelection}
-                    onClearRelation={clearMapRelation}
-                  />
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        <motion.section
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.42, ease: "easeOut" }}
-          className="atlas-glass-strong rounded-2xl border border-cyan-400/20 px-4 py-4 sm:px-5"
-        >
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-cyan-400/25 bg-cyan-500/10 px-3 py-1 text-[11px] uppercase tracking-[0.14em] text-cyan-200">
-                <Compass className="h-3.5 w-3.5" />
-                Atlas Signal Desk
-              </div>
-              <h1 className="mt-2 text-xl font-semibold tracking-tight text-white sm:text-2xl">
-                Real-Time Macro Intelligence With Model Proof
-              </h1>
-              <p className="mt-1 max-w-4xl text-xs text-slate-300 sm:text-sm">
-                {data?.headline_brief || "Loading real-time global macro briefing..."}
+              <h2 className="text-xl font-semibold tracking-tight text-zinc-100 sm:text-2xl">Signal Desk: Live Development Intelligence</h2>
+              <p className="mt-1.5 max-w-5xl text-sm text-zinc-400">
+                Purpose: surface the most material macro developments in real time, connect them to verified source evidence, and translate
+                them into practical action for professionals and the public.
               </p>
             </div>
-
-            <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
-              <StatPill label="As Of" value={formatClock(data?.as_of)} />
-              <StatPill label="Confidence" value={data?.confidence?.score ?? "--"} tone="text-cyan-200" />
-              <StatPill
+            <div className="flex flex-wrap gap-2">
+              <StatBadge label="As Of" value={formatClock(data?.as_of)} />
+              <StatBadge label="Confidence" value={data?.confidence?.score ?? "--"} />
+              <StatBadge
                 label="Healthy Sources"
                 value={`${healthySources}/${totalSources || "--"}`}
                 tone={healthySources > 0 ? "text-emerald-200" : "text-amber-200"}
               />
-              <StatPill label="Status" value={isFetching ? "Refreshing" : "Live"} tone="text-cyan-200" />
+              <StatBadge label="Status" value={isFetching ? "Refreshing" : "Live"} />
             </div>
           </div>
-        </motion.section>
 
-        <motion.section
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.46, delay: 0.08, ease: "easeOut" }}
-          className="grid grid-cols-1 gap-3 xl:grid-cols-[320px_minmax(0,1fr)_390px]"
-        >
-          <aside className="space-y-3">
-            <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.22 }} className="atlas-glass-strong rounded-2xl border border-white/[0.08] p-3">
-              <div className="flex items-center gap-2 text-sm font-semibold text-white">
-                <Activity className="h-4 w-4 text-amber-300" />
-                Critical Developments
+          <div className="grid grid-cols-1 gap-3 xl:grid-cols-[360px_minmax(0,1fr)]">
+            <aside className={`${PANEL_CLASS} bg-black/24 p-3 backdrop-blur-sm`}>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-sm font-semibold text-zinc-100">
+                  <Activity className="h-4 w-4 text-zinc-300" />
+                  Critical Developments
+                </div>
+                <div className="text-[10px] uppercase tracking-[0.11em] text-zinc-500">Select to inspect</div>
               </div>
 
-              <div className="mt-2.5 space-y-1.5">
+              <div className="mt-2.5 max-h-[520px] space-y-1.5 overflow-auto pr-1">
                 {developments.map((dev) => {
-                  const active = dev.development_id === deferredSelectedDevelopment?.development_id;
+                  const active = dev.development_id === selectedDevelopment?.development_id;
                   const impScore = dev.scorecard?.find((score) => score.metric === "importance")?.value ?? dev.importance;
+                  const latestSource = developmentTape.get(dev.development_id);
                   return (
                     <button
                       key={dev.development_id}
@@ -312,186 +686,176 @@ export default function WorldPulse() {
                       onClick={() =>
                         startTransition(() => {
                           setSelectedDevelopmentId(dev.development_id);
+                          setSelectedThemeId(dev.theme_id);
+                          setSelectedDevelopmentLabel(dev.label || dev.title || "");
                         })
                       }
-                      className={`w-full rounded-xl border p-2.5 text-left transition ${
-                        active
-                          ? "border-cyan-400/45 bg-cyan-500/10"
-                          : "border-white/[0.08] bg-white/[0.01] hover:border-white/[0.16]"
+                      className={`atlas-focus-ring w-full rounded-lg px-2.5 py-2 text-left transition ${
+                        active ? "bg-white/[0.11]" : "bg-white/[0.04] hover:bg-white/[0.08]"
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <div className="text-xs font-medium text-slate-100">{dev.label}</div>
-                        <span className={`text-xs font-semibold ${scoreTone(impScore)}`}>{impScore}</span>
+                        <div className="text-[12px] font-semibold text-zinc-100">{dev.label}</div>
+                        <span className={`text-[11px] font-semibold ${scoreTone(impScore)}`}>{impScore}</span>
                       </div>
-                      <div className="mt-1 text-[11px] text-slate-400">
-                        {dev.market_confirmation} confirmation | {dev.source_diversity} sources
-                      </div>
-                      <div className="mt-1 text-[10px] uppercase tracking-[0.08em] text-slate-500">
+                      <div className="mt-0.5 text-[10px] uppercase tracking-[0.1em] text-zinc-500">
                         <span className={stateTone(dev.state)}>{dev.state}</span>
-                        <span className="mx-1 text-slate-600">/</span>
+                        <span className="mx-1 text-zinc-600">/</span>
                         <span className={stateTone(dev.outlook_state)}>{dev.outlook_state}</span>
+                        <span className="mx-1 text-zinc-600">•</span>
+                        {dev.market_confirmation}
+                      </div>
+                      <div className="mt-1 line-clamp-1 text-[11px] text-zinc-300">
+                        {latestSource?.title || "Awaiting fresh source confirmation"}
+                      </div>
+                      <div className="mt-0.5 text-[10px] text-zinc-500">
+                        {latestSource ? `${latestSource.source} • ${formatRelativeTime(latestSource.published_at)}` : "No linked source yet"}
                       </div>
                     </button>
                   );
                 })}
               </div>
-            </motion.div>
+            </aside>
 
-            <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.22 }} className="atlas-glass-strong rounded-2xl border border-white/[0.08] p-3">
-              <div className="flex items-center gap-2 text-sm font-semibold text-white">
-                <Newspaper className="h-4 w-4 text-cyan-300" />
-                Signal Desk
-              </div>
-
-              <div className="mt-2 max-h-[240px] overflow-auto pr-1">
-                {signalDeskRows.length ? (
-                  signalDeskRows.map((row) => (
-                    <a
-                      key={row.article_id}
-                      href={row.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="block border-b border-white/[0.07] py-2 last:border-b-0"
-                    >
-                      <div className="line-clamp-1 text-[11px] text-cyan-200">{row.title}</div>
-                      <div className="mt-1 text-[10px] text-slate-500">
-                        {row.source} | {row.developmentLabel} | {new Date(row.published_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            <section className="space-y-3">
+              <div className={`${PANEL_CLASS} bg-black/24 p-3 backdrop-blur-sm sm:p-4`}>
+                {selectedDevelopment ? (
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">Critical Development + Source Narrative</div>
+                        <h3 className="mt-1 text-base font-semibold text-zinc-100">{selectedDevelopment.title}</h3>
+                        <p className="mt-1 text-sm text-zinc-300">{selectedDevelopment.narrative_story}</p>
+                        {isFetchingDevelopmentDetail ? <div className="mt-1 text-[10px] text-zinc-500">Refreshing detailed intelligence...</div> : null}
                       </div>
-                    </a>
-                  ))
+                      <Link
+                        to={scenarioTarget}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-white/25 px-3 py-1.5 text-[11px] font-medium text-zinc-100 transition duration-300 hover:border-white/40 hover:tracking-[0.02em]"
+                      >
+                        <FlaskConical className="h-3.5 w-3.5" />
+                        Run Scenario
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </Link>
+                    </div>
+
+                    <DevelopmentStoryGraph graph={selectedDevelopment.story_graph} onSelectNode={setSelectedGraphNode} />
+                  </div>
                 ) : (
-                  <div className="text-[11px] text-slate-500">No verified source evidence available yet.</div>
+                  <div className="text-sm text-zinc-500">Select a development to view analysis.</div>
                 )}
               </div>
-            </motion.div>
 
-            <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.22 }} className="atlas-glass-strong rounded-2xl border border-white/[0.08] p-3">
-              <button
-                type="button"
-                onClick={() => setHeatBoardOpen((prev) => !prev)}
-                className="flex w-full items-center justify-between"
-              >
-                <span className="text-sm font-semibold text-white">Theme Heat Board</span>
-                {heatBoardOpen ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
-              </button>
-
-              {heatBoardOpen && (
-                <div className="mt-2.5 space-y-2">
-                  {(data?.theme_board || []).map((theme) => (
-                    <div key={theme.theme_id} className="space-y-1">
-                      <div className="flex items-center justify-between gap-2 text-[11px]">
-                        <div className="text-slate-200">{theme.label}</div>
-                        <div className="text-cyan-200">{theme.temperature}</div>
-                      </div>
-                      <div className="h-1.5 rounded-full bg-white/[0.08]">
-                        <div className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-blue-500" style={{ width: `${theme.temperature}%` }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </motion.div>
-          </aside>
-
-          <motion.section whileHover={{ y: -2 }} transition={{ duration: 0.22 }} className="atlas-glass-strong rounded-2xl border border-white/[0.08] p-3.5">
-            {deferredSelectedDevelopment ? (
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <h2 className="text-base font-semibold text-white">{deferredSelectedDevelopment.title}</h2>
-                    <p className="mt-1 text-xs text-cyan-200">{deferredSelectedDevelopment.narrative_story}</p>
-                    {isFetchingDevelopmentDetail && <div className="mt-1 text-[10px] text-slate-500">Refreshing detailed proof...</div>}
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                <div className={`${INNER_PANEL_CLASS} bg-black/20 p-3 backdrop-blur-sm`}>
+                  <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-zinc-100">
+                    <BookOpenText className="h-4 w-4 text-zinc-300" />
+                    What This Means
                   </div>
-                  <Link
-                    to={`${createPageUrl("ScenarioLab")}?development_id=${encodeURIComponent(deferredSelectedDevelopment.development_id)}`}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-2.5 py-1.5 text-[11px] font-medium text-cyan-200 hover:bg-cyan-500/15"
-                  >
-                    <FlaskConical className="h-3.5 w-3.5" />
-                    Run Scenario
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </Link>
-                </div>
+                  <div className="text-[10px] uppercase tracking-[0.1em] text-zinc-500">Market Lens + Public Lens</div>
 
-                <DevelopmentStoryGraph graph={deferredSelectedDevelopment.story_graph} onSelectNode={setSelectedGraphNode} />
-
-                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                  <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3">
-                    <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-white">
-                      <BookOpenText className="h-4 w-4 text-cyan-300" />
-                      What This Means
+                  {selectedGraphNode ? (
+                    <div className="mt-2 rounded-lg bg-white/[0.05] p-2.5">
+                      <div className="text-sm font-medium text-zinc-100">{selectedGraphNode.label}</div>
+                      <div className="mt-1 text-xs text-zinc-300">{selectedGraphNode.detail}</div>
+                      <div className="mt-1 text-[11px] text-zinc-400">Public lens: {publicLensText(selectedGraphNode.detail)}</div>
                     </div>
-
-                    {selectedGraphNode ? (
-                      <div className="rounded-lg border border-cyan-400/20 bg-cyan-500/5 p-2.5">
-                        <div className="text-xs font-medium text-cyan-200">{selectedGraphNode.label}</div>
-                        <div className="mt-1 text-xs text-slate-300">{selectedGraphNode.detail}</div>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {deferredSelectedDevelopment.causal_chain.map((step) => (
-                          <div key={`${deferredSelectedDevelopment.development_id}-${step.step}`} className="flex items-start gap-2">
-                            <div className="mt-[2px] flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-cyan-400/35 text-[10px] font-semibold text-cyan-200">
-                              {step.step}
-                            </div>
-                            <div className="text-xs text-slate-300">{step.detail}</div>
+                  ) : (
+                    <div className="mt-2 max-h-[208px] space-y-2 overflow-auto pr-1">
+                      {(selectedDevelopment?.causal_chain || []).slice(0, 4).map((step) => (
+                        <div key={`${selectedDevelopment.development_id}-${step.step}`} className="rounded-lg bg-white/[0.04] px-2.5 py-2">
+                          <div className="text-[11px] font-semibold text-zinc-100">
+                            Step {step.step}: {step.title}
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3">
-                    <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-white">
-                      <ShieldAlert className="h-4 w-4 text-amber-300" />
-                      Risk Playbook
-                    </div>
-
-                    <div className="space-y-2">
-                      {deferredSelectedDevelopment.risk_implications.map((item, idx) => (
-                        <div key={`${deferredSelectedDevelopment.development_id}-risk-${idx}`} className="border-b border-white/[0.06] pb-2 text-[11px] last:border-b-0 last:pb-0">
-                          <div className="text-slate-100">
-                            <span className="font-semibold">{item.asset_class}</span> | {item.direction}
-                          </div>
-                          <div className="text-slate-400">{item.rationale}</div>
+                          <div className="mt-0.5 text-[11px] text-zinc-300">Market lens: {step.detail}</div>
+                          <div className="mt-0.5 text-[11px] text-zinc-400">Public lens: {publicLensText(step.detail)}</div>
                         </div>
                       ))}
+                    </div>
+                  )}
+                </div>
 
-                      {deferredSelectedDevelopment.recommended_actions.slice(0, 2).map((action, idx) => (
-                        <div key={`${deferredSelectedDevelopment.development_id}-action-${idx}`} className="flex items-start gap-2 text-xs text-cyan-200">
+                <div className={`${INNER_PANEL_CLASS} bg-black/20 p-3 backdrop-blur-sm`}>
+                  <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-zinc-100">
+                    <ShieldAlert className="h-4 w-4 text-zinc-300" />
+                    Risk Playbook
+                  </div>
+                  <div className="text-[10px] uppercase tracking-[0.1em] text-zinc-500">Actionable for portfolios and households</div>
+
+                  <div className="mt-2 max-h-[208px] space-y-2 overflow-auto pr-1">
+                    {(selectedDevelopment?.risk_implications || []).slice(0, 3).map((item, idx) => (
+                      <div key={`${selectedDevelopment.development_id}-risk-${idx}`} className="rounded-lg bg-white/[0.04] px-2.5 py-2">
+                        <div className="text-[11px] text-zinc-100">
+                          <span className="font-semibold">{item.asset_class}</span> | {item.direction}
+                        </div>
+                        <div className="mt-0.5 text-[11px] text-zinc-300">Portfolio lens: {item.rationale}</div>
+                        <div className="mt-0.5 text-[11px] text-zinc-400">Public lens: {publicLensText(item.rationale)}</div>
+                      </div>
+                    ))}
+
+                    {(selectedDevelopment?.recommended_actions || []).slice(0, 2).map((action, idx) => (
+                      <div key={`${selectedDevelopment.development_id}-action-${idx}`} className="rounded-lg bg-white/[0.04] px-2.5 py-2 text-[11px] text-zinc-200">
+                        <div className="flex items-start gap-2">
                           <Sparkles className="mt-[1px] h-3.5 w-3.5 shrink-0" />
                           <span>{action.action}</span>
                         </div>
-                      ))}
-                    </div>
+                        <div className="mt-1 text-zinc-400">Public lens: {publicLensText(action.action)}</div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
-            ) : (
-              <div className="text-sm text-slate-500">Select a development to view analysis.</div>
-            )}
-          </motion.section>
+            </section>
+          </div>
+        </section>
 
-          <aside className="space-y-3">
-            <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.22 }} className="atlas-glass-strong overflow-hidden rounded-2xl border border-white/[0.08] p-2.5">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <div className="text-sm font-semibold text-white">Cross-Region Spillover</div>
-                {mapStartCountry && !mapEndCountry && (
-                  <div className="text-[10px] uppercase tracking-[0.1em] text-cyan-300">Select destination</div>
-                )}
+        {isLoading ? <div className="text-xs text-zinc-500">Loading live signal desk...</div> : null}
+        {isError ? <div className="text-xs text-rose-300">Failed to load briefing: {error?.message || "Unknown error"}</div> : null}
+      </div>
+
+      <AnimatePresence>
+        {mapFullscreenOpen ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[78] bg-black/90 p-3 backdrop-blur-sm sm:p-6"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.98, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.98, y: 8 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="relative mx-auto h-full max-w-[1500px] overflow-hidden rounded-2xl border border-white/15 bg-black/65 shadow-[0_26px_70px_rgba(0,0,0,0.58)]"
+            >
+              <div className="absolute inset-x-0 top-0 z-[1300] flex items-center justify-between border-b border-white/10 bg-black/50 px-4 py-3">
+                <div className="text-sm font-semibold uppercase tracking-[0.12em] text-zinc-100">
+                  Cross Region Spillover Intelligence
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMapFullscreenOpen(false)}
+                  className="atlas-focus-ring inline-flex items-center gap-1 rounded-full border border-white/20 bg-white/[0.05] px-3 py-1 text-[10px] uppercase tracking-[0.11em] text-zinc-200 transition hover:bg-white/[0.12]"
+                >
+                  <Minimize2 className="h-3.5 w-3.5" />
+                  Minimize & Return
+                </button>
               </div>
 
-              <div className="relative h-[300px] overflow-hidden rounded-xl border border-white/[0.08]">
+              <div className="absolute inset-0 pt-[53px]">
+                <div className="absolute left-4 top-3 z-[1300]">{renderRelationPicker()}</div>
                 <GlobeMap
-                  hotspots={data?.spillover_map?.hotspots || []}
-                  arcs={data?.spillover_map?.arcs || []}
+                  mapKey="hero-spillover-fullscreen"
+                  hotspots={spilloverHotspots}
+                  arcs={spilloverArcs}
                   manualArc={manualArc}
                   onSelectCountry={handleSelectCountry}
-                  isExpanded={isMapExpanded}
-                  onToggleExpand={() => setIsMapExpanded((prev) => !prev)}
+                  initialZoom={3}
+                  minZoom={2.2}
+                  maxZoom={7}
+                  instructionText={mapInstructionText}
                 />
 
-                {!isMapExpanded && (mapStartCountry || relationData) && (
+                {(mapStartCountry || relationData) ? (
                   <CountryRelationPanel
                     startCountry={mapStartCountry}
                     endCountry={mapEndCountry}
@@ -500,85 +864,43 @@ export default function WorldPulse() {
                     onClearSelection={clearMapSelection}
                     onClearRelation={clearMapRelation}
                   />
-                )}
+                ) : null}
+
+                {focusedCountry ? (
+                  <CountryIntelCard
+                    country={focusedCountry}
+                    intelRows={countryIntelRows}
+                    healthySources={healthySources}
+                    totalSources={totalSources}
+                    countryProof={countryProof}
+                    isLoadingProof={isFetchingCountryProof}
+                    onClose={() => setFocusedCountry(null)}
+                  />
+                ) : null}
+
+                <button
+                  type="button"
+                  onClick={() => setMapFullscreenOpen(false)}
+                  className="atlas-focus-ring absolute bottom-5 right-5 z-[1300] inline-flex items-center gap-1 rounded-full border border-white/20 bg-black/55 px-4 py-2 text-xs font-medium uppercase tracking-[0.1em] text-zinc-100 transition hover:bg-black/75"
+                >
+                  <Minimize2 className="h-4 w-4" />
+                  Return To Website
+                </button>
               </div>
             </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
-            <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.22 }} className="atlas-glass-strong rounded-2xl border border-white/[0.08] p-3">
-              <div className="flex items-center gap-2 text-sm font-semibold text-white">
-                <CheckCircle2 className="h-4 w-4 text-cyan-300" />
-                Proof Console
-              </div>
-
-              {selectedProof ? (
-                <div className="mt-2.5 space-y-3">
-                  <div>
-                    <div className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Executive Readout</div>
-                    <div className="mt-1 text-xs leading-relaxed text-cyan-200">{selectedProof.conclusion.story}</div>
-                    <div className="mt-1 text-[11px] leading-relaxed text-slate-400">{selectedProof.conclusion.why_now}</div>
-                  </div>
-
-                  <div className="border-t border-white/[0.08] pt-2">
-                    <div className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Source Evidence</div>
-                    <div className="mt-1 max-h-[150px] space-y-2 overflow-auto pr-1">
-                      {selectedProof.source_evidence.slice(0, 4).map((source) => (
-                        <a
-                          key={source.article_id}
-                          href={source.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="block rounded-md border border-white/[0.08] bg-[#0b1327] px-2.5 py-2 hover:border-cyan-400/25"
-                        >
-                          <div className="text-[11px] text-cyan-200">{source.title}</div>
-                          <div className="mt-1 text-[10px] text-slate-400">
-                            {source.source} | {new Date(source.published_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                          </div>
-                        </a>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-3 border-t border-white/[0.08] pt-2 sm:grid-cols-2">
-                    <div>
-                      <div className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Model Validation</div>
-                      {selectedProof.model_evidence.slice(0, 1).map((model) => (
-                        <div key={model.model_name} className="mt-1 text-[11px] leading-relaxed text-slate-300">
-                          <div className="break-all">{model.model_name}</div>
-                          <div className="text-slate-500">{model.model_version}</div>
-                          <div className="font-semibold text-cyan-200">Confidence {(model.score_confidence * 100).toFixed(0)}%</div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div>
-                      <div className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Market Signals</div>
-                      <div className="mt-1 space-y-1">
-                        {selectedProof.market_evidence.slice(0, 2).map((item, idx) => (
-                          <div key={`${item.signal}-${idx}`} className="text-[11px] leading-relaxed text-slate-300">
-                            <span className="font-medium text-cyan-200">{item.signal}</span>: {item.value} ({item.interpretation})
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="border-t border-white/[0.08] pt-2 text-xs text-slate-300">
-                    <span className={healthySources > 0 ? "text-emerald-200" : "text-amber-200"}>
-                      {healthySources}/{totalSources || 0}
-                    </span>{" "}
-                    reliable sources healthy. Polling every {feedStatus?.polling_interval_seconds || 60}s.
-                  </div>
-                </div>
-              ) : (
-                <div className="mt-2 text-xs text-slate-500">Proof data unavailable.</div>
-              )}
-            </motion.div>
-          </aside>
-        </motion.section>
-
-        {isLoading && <div className="text-xs text-slate-400">Loading model-driven signal desk...</div>}
-        {isError && <div className="text-xs text-rose-300">Failed to load briefing: {error?.message || "Unknown error"}</div>}
-      </div>
+      <ProofConsoleOverlay
+        open={proofConsoleOpen}
+        onToggle={() => setProofConsoleOpen((prev) => !prev)}
+        onClose={() => setProofConsoleOpen(false)}
+        selectedProof={selectedProof}
+        healthySources={healthySources}
+        totalSources={totalSources}
+        feedStatus={feedStatus}
+      />
     </div>
   );
 }

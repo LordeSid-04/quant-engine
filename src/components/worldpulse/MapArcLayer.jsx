@@ -36,6 +36,7 @@ export default function MapArcLayer({ arcs, hotspots, manualArc = null }) {
       if (!from || !to) return;
 
       const isManual = Boolean(arc.__manual);
+      const arcColor = isManual ? "#fafafa" : "#d4d4d8";
       const p1 = map.latLngToContainerPoint([from.lat, from.lng]);
       const p2 = map.latLngToContainerPoint([to.lat, to.lng]);
 
@@ -52,7 +53,7 @@ export default function MapArcLayer({ arcs, hotspots, manualArc = null }) {
       const shadow = document.createElementNS("http://www.w3.org/2000/svg", "path");
       shadow.setAttribute("d", pathD);
       shadow.setAttribute("fill", "none");
-      shadow.setAttribute("stroke", arc.color);
+      shadow.setAttribute("stroke", arcColor);
       shadow.setAttribute("stroke-width", isManual ? "4.2" : "3");
       shadow.setAttribute("opacity", isManual ? "0.18" : "0.07");
       shadow.setAttribute("filter", "url(#arc-glow)");
@@ -63,7 +64,7 @@ export default function MapArcLayer({ arcs, hotspots, manualArc = null }) {
       path.setAttribute("id", pathId);
       path.setAttribute("d", pathD);
       path.setAttribute("fill", "none");
-      path.setAttribute("stroke", arc.color);
+      path.setAttribute("stroke", arcColor);
       path.setAttribute("stroke-width", isManual ? "2.0" : "1.2");
       path.setAttribute("opacity", isManual ? "0.85" : "0.45");
       path.setAttribute("stroke-dasharray", isManual ? "8 4" : "6 5");
@@ -73,7 +74,7 @@ export default function MapArcLayer({ arcs, hotspots, manualArc = null }) {
       // Animated particle dot
       const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
       circle.setAttribute("r", isManual ? "4.2" : "3.5");
-      circle.setAttribute("fill", arc.color);
+      circle.setAttribute("fill", arcColor);
       circle.setAttribute("opacity", "0.9");
       circle.setAttribute("filter", "url(#arc-glow)");
 
@@ -98,7 +99,7 @@ export default function MapArcLayer({ arcs, hotspots, manualArc = null }) {
 
       const arrow = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
       arrow.setAttribute("points", `${p2.x},${p2.y} ${ax},${ay} ${bx},${by}`);
-      arrow.setAttribute("fill", arc.color);
+      arrow.setAttribute("fill", arcColor);
       arrow.setAttribute("opacity", isManual ? "0.9" : "0.55");
       svg.appendChild(arrow);
     });

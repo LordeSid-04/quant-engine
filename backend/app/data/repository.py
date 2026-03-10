@@ -68,6 +68,9 @@ class CuratedDataRepository:
     def theme_seed_articles(self) -> list[dict[str, Any]]:
         return self._read_json("theme_seed_articles.json")
 
+    def reliable_news_sources(self) -> dict[str, Any]:
+        return self._read_json("reliable_news_sources.json")
+
 
 class DataRepository:
     def __init__(self, curated_base_path: Path) -> None:
@@ -94,6 +97,7 @@ class DataRepository:
         self._world_pulse_snapshot_cache: dict[str, Any] | None = None
         self._daily_brief_snapshot_cache: dict[str, Any] | None = None
         self._daily_brief_history_cache: list[dict[str, Any]] = []
+        self._public_memory_entries: list[dict[str, Any]] = []
         self._quote_last_supabase_upsert_ts: dict[str, datetime] = {}
         self._risk_snapshot_last_upsert_ts: datetime | None = None
         self._world_pulse_snapshot_last_upsert_ts: datetime | None = None
@@ -765,6 +769,51 @@ class DataRepository:
                 default=[],
             )
         )
+
+    def save_public_memory_entry(self, payload: dict[str, Any]) -> str:
+        entry_id = str(payload.get("id") or f"memory-{_utc_now().strftime('%Y%m%d%H%M%S%f')}")
+        row = {
+            "id": entry_id,
+            "created_at": _utc_now_iso(),
+            "payload": payload,
+        }
+        self._public_memory_entries = [row] + self._public_memory_entries[:199]
+
+        if self.supabase is not None:
+            self._dispatch_supabase_write(
+                lambda: safe_execute(
+                    self.supabase.table("public_memory_entries").insert(row),
+                    default=[],
+                )
+            )
+        return entry_id
+
+    def get_public_memory_entries(self, *, theme_id: str | None = None, limit: int = 20) -> list[dict[str, Any]]:
+        bounded_limit = max(1, min(200, int(limit)))
+        normalized_theme = str(theme_id or "").strip().lower()
+
+        entries = [dict(item) for item in self._public_memory_entries]
+        if not entries and self.supabase is not None:
+            rows = safe_execute(
+                self.supabase.table("public_memory_entries").select("*").order("created_at", desc=True).limit(bounded_limit),
+                default=[],
+            )
+            entries = [dict(row) for row in rows]
+            if entries:
+                self._public_memory_entries = entries[:200]
+
+        if normalized_theme:
+            filtered = []
+            for row in entries:
+                payload = row.get("payload", {})
+                if not isinstance(payload, dict):
+                    continue
+                row_theme = str(payload.get("theme_id", "")).strip().lower()
+                if row_theme == normalized_theme:
+                    filtered.append(row)
+            entries = filtered
+
+        return entries[:bounded_limit]
 
     def _dispatch_supabase_write(self, operation: Any) -> None:
         if self.supabase is None:

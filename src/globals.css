@@ -1,72 +1,99 @@
-@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Spectral:wght@500;600;700&display=swap");
-
+@import url("https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&display=swap");
 @tailwind base;
-@tailwind components;
-@tailwind utilities;
 
 :root {
-  --atlas-bg: #050912;
-  --atlas-surface: rgba(12, 19, 36, 0.78);
-  --atlas-glass: rgba(18, 28, 52, 0.52);
-  --atlas-border: rgba(91, 147, 196, 0.18);
-  --atlas-glow-blue: rgba(96, 165, 250, 0.24);
-  --atlas-glow-cyan: rgba(34, 211, 238, 0.22);
-  --atlas-glow-amber: rgba(251, 191, 36, 0.24);
-  --atlas-accent-blue: #60a5fa;
-  --atlas-accent-cyan: #22d3ee;
-  --atlas-accent-amber: #fbbf24;
-  --atlas-text: #e6edf7;
-  --atlas-text-muted: #9caec6;
+  --atlas-bg-0: #030303;
+  --atlas-bg-1: #070707;
+  --atlas-bg-2: #0d0d0d;
+  --atlas-bg-3: #121212;
+  --atlas-surface: rgba(14, 14, 14, 0.08);
+  --atlas-surface-strong: rgba(10, 10, 10, 0.14);
+  --atlas-surface-soft: rgba(18, 18, 18, 0.1);
+  --atlas-border: rgba(255, 255, 255, 0.1);
+  --atlas-border-strong: rgba(255, 255, 255, 0.18);
+  --atlas-text: #f5f5f5;
+  --atlas-text-muted: #a3a3a3;
+  --atlas-text-subtle: #737373;
+  --atlas-accent: #f1f5f9;
+  --atlas-accent-soft: rgba(241, 245, 249, 0.2);
+  --atlas-danger: #fecaca;
+  --atlas-success: #bbf7d0;
 }
 
 @layer base {
   * {
     @apply border-border;
+    font-family: "Sora", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
   body {
-    @apply text-foreground;
-    background:
-      radial-gradient(circle at 12% 8%, rgba(56, 189, 248, 0.12), transparent 38%),
-      radial-gradient(circle at 80% 82%, rgba(20, 184, 166, 0.08), transparent 45%),
-      linear-gradient(165deg, #050912 0%, #081326 48%, #060b16 100%);
+    @apply text-foreground antialiased;
+    margin: 0;
+    min-height: 100vh;
+    overflow-x: clip;
     color: var(--atlas-text);
-    font-family: "Manrope", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-    overflow-x: hidden;
+    font-family: "Sora", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    background:
+      radial-gradient(circle at 15% -10%, rgba(255, 255, 255, 0.18), transparent 36%),
+      radial-gradient(circle at 88% 110%, rgba(255, 255, 255, 0.06), transparent 38%),
+      linear-gradient(155deg, var(--atlas-bg-0) 0%, var(--atlas-bg-1) 55%, var(--atlas-bg-2) 100%);
   }
 
   h1,
   h2,
-  h3 {
-    font-family: "Spectral", Georgia, "Times New Roman", serif;
-    letter-spacing: 0.01em;
+  h3,
+  h4 {
+    font-family: "Sora", "Segoe UI", sans-serif;
+    letter-spacing: -0.015em;
   }
 }
 
 @keyframes pulse-glow {
-  0%, 100% { opacity: 0.4; transform: scale(1); }
-  50% { opacity: 1; transform: scale(1.15); }
-}
-
-@keyframes arc-flow {
-  0% { stroke-dashoffset: 200; opacity: 0; }
-  30% { opacity: 1; }
-  100% { stroke-dashoffset: 0; opacity: 0.3; }
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.95);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
 }
 
 @keyframes drift {
-  0% { transform: translateX(0) translateY(0); }
-  50% { transform: translateX(15px) translateY(-8px); }
-  100% { transform: translateX(0) translateY(0); }
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(18px, -12px, 0);
+  }
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
 }
 
 @keyframes radar-spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes fade-up {
-  0% { opacity: 0; transform: translateY(20px); }
-  100% { opacity: 1; transform: translateY(0); }
+  0% {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes aurora-shift {
@@ -81,71 +108,166 @@
 }
 
 @keyframes pin-heartbeat {
-  0%, 100% { opacity: 0.16; transform: scale(0.88); }
-  30% { opacity: 0.4; transform: scale(1.05); }
-  50% { opacity: 0.28; transform: scale(0.98); }
-  72% { opacity: 0.42; transform: scale(1.12); }
+  0%,
+  100% {
+    opacity: 0.2;
+    transform: scale(0.9);
+  }
+  40% {
+    opacity: 0.45;
+    transform: scale(1.07);
+  }
 }
 
 @keyframes pin-bounce {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-1px); }
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
 }
 
-.atlas-glass {
+.atlas-app-shell {
+  position: relative;
   background:
-    linear-gradient(145deg, rgba(13, 21, 40, 0.78), rgba(9, 14, 28, 0.6)),
-    var(--atlas-glass);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+    radial-gradient(72rem 42rem at 16% -22%, rgba(255, 255, 255, 0.04), transparent 62%),
+    radial-gradient(56rem 36rem at 82% 118%, rgba(255, 255, 255, 0.03), transparent 58%),
+    linear-gradient(165deg, var(--atlas-bg-0) 0%, var(--atlas-bg-1) 45%, var(--atlas-bg-2) 100%);
+}
+
+.atlas-text-gradient {
+  background: linear-gradient(180deg, #ffffff 0%, #d4d4d8 90%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.atlas-glass,
+.atlas-surface {
+  background:
+    linear-gradient(145deg, rgba(16, 16, 16, 0.16), rgba(10, 10, 10, 0.08)),
+    var(--atlas-surface);
   border: 1px solid var(--atlas-border);
-  box-shadow: 0 10px 26px rgba(2, 6, 23, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(14px) saturate(104%);
+  -webkit-backdrop-filter: blur(14px) saturate(104%);
+  box-shadow:
+    0 12px 34px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.14);
 }
 
-.atlas-glass-strong {
+.atlas-glass-strong,
+.atlas-surface-strong {
   background:
-    linear-gradient(145deg, rgba(11, 19, 36, 0.9), rgba(7, 12, 24, 0.82)),
-    rgba(11, 19, 36, 0.86);
-  backdrop-filter: blur(30px);
-  -webkit-backdrop-filter: blur(30px);
-  border: 1px solid rgba(96, 165, 250, 0.16);
+    linear-gradient(150deg, rgba(14, 14, 14, 0.22), rgba(8, 8, 8, 0.14)),
+    var(--atlas-surface-strong);
+  border: 1px solid var(--atlas-border-strong);
+  backdrop-filter: blur(18px) saturate(108%);
+  -webkit-backdrop-filter: blur(18px) saturate(108%);
   box-shadow:
-    0 16px 44px rgba(2, 6, 23, 0.45),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05),
-    inset 0 -1px 0 rgba(15, 23, 42, 0.45);
+    0 16px 42px rgba(0, 0, 0, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.12);
+}
+
+.atlas-surface-soft {
+  background: linear-gradient(148deg, rgba(18, 18, 18, 0.13), rgba(12, 12, 12, 0.08));
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.atlas-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.72rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.015);
+  font-size: 0.64rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: #d4d4d8;
+}
+
+.atlas-pill {
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.015);
+  padding: 0.46rem 0.78rem;
+}
+
+.atlas-kpi {
+  border-radius: 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
+  padding: 0.9rem 1rem;
+}
+
+.atlas-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.25) 50%, transparent 100%);
 }
 
 .atlas-aurora-line {
   height: 1px;
-  background: linear-gradient(
-    90deg,
-    rgba(96, 165, 250, 0),
-    rgba(96, 165, 250, 0.52),
-    rgba(34, 211, 238, 0.52),
-    rgba(96, 165, 250, 0)
-  );
-  opacity: 0.7;
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.45) 50%, transparent 100%);
+  opacity: 0.95;
 }
 
 .glow-node {
-  animation: pulse-glow 3s ease-in-out infinite;
+  animation: pulse-glow 2.8s ease-in-out infinite;
 }
 
 .glow-node-fast {
-  animation: pulse-glow 1.5s ease-in-out infinite;
-}
-
-.arc-animate {
-  animation: arc-flow 3s ease-out infinite;
-  stroke-dasharray: 200;
+  animation: pulse-glow 1.8s ease-in-out infinite;
 }
 
 .drift-slow {
-  animation: drift 20s ease-in-out infinite;
+  animation: drift 22s ease-in-out infinite;
 }
 
 .fade-up {
-  animation: fade-up 0.6s ease-out forwards;
+  animation: fade-up 0.55s ease-out forwards;
+}
+
+.atlas-focus-ring:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.58);
+  outline-offset: 2px;
+}
+
+.atlas-blend-panel,
+.atlas-blend-panel * {
+  background: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.atlas-ghost-theme,
+.atlas-ghost-theme * {
+  background: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.atlas-ghost-theme button,
+.atlas-ghost-theme a {
+  transition: color 0.24s ease, opacity 0.24s ease, transform 0.24s ease;
+}
+
+.atlas-ghost-theme button:hover,
+.atlas-ghost-theme a:hover {
+  color: #ffffff;
+  transform: translateY(-1px);
 }
 
 .worldpulse-shell {
@@ -216,66 +338,85 @@
 
 /* Leaflet overrides */
 .leaflet-container {
-  background: #0a0e1a !important;
-  font-family: "Manrope", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  background: #090909 !important;
+  font-family: "Sora", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
 }
 
 .leaflet-tile-pane {
-  filter: hue-rotate(198deg) saturate(1.15) brightness(0.46) contrast(1.2);
+  filter: grayscale(1) brightness(0.42) contrast(1.2);
 }
 
 .leaflet-container .leaflet-tile-container {
-  background: #0d1529;
+  background: #0a0a0a;
 }
 
 .atlas-map-tooltip.leaflet-tooltip {
-  background: rgba(15, 23, 42, 0.95) !important;
-  border: 1px solid rgba(56, 189, 248, 0.2) !important;
-  backdrop-filter: blur(20px);
+  background: rgba(12, 12, 12, 0.94) !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  backdrop-filter: blur(18px);
   border-radius: 10px !important;
   padding: 8px 12px !important;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.5) !important;
-  color: #e2e8f0;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5) !important;
+  color: #f4f4f5;
 }
 
 .atlas-map-tooltip.leaflet-tooltip::before {
-  border-top-color: rgba(56, 189, 248, 0.2) !important;
+  border-top-color: rgba(255, 255, 255, 0.2) !important;
 }
 
 .leaflet-zoom-box {
-  border-color: rgba(56, 189, 248, 0.5) !important;
-  background: rgba(56, 189, 248, 0.05) !important;
+  border-color: rgba(255, 255, 255, 0.4) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
 }
 
 .leaflet-control-zoom {
-  border: 1px solid rgba(56, 189, 248, 0.15) !important;
-  border-radius: 10px !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  border-radius: 11px !important;
   overflow: hidden;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.4) !important;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.42) !important;
 }
 
 .leaflet-control-zoom a {
-  background: rgba(15, 23, 42, 0.9) !important;
-  color: #94a3b8 !important;
-  border-bottom: 1px solid rgba(56, 189, 248, 0.1) !important;
+  background: rgba(8, 8, 8, 0.92) !important;
+  color: #d4d4d8 !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
 }
 
 .leaflet-control-zoom a:hover {
-  background: rgba(30, 41, 70, 0.95) !important;
-  color: #38bdf8 !important;
+  background: rgba(20, 20, 20, 0.95) !important;
+  color: #ffffff !important;
+}
+
+::selection {
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
 }
 
 /* Scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 7px;
 }
+
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
 ::-webkit-scrollbar-thumb {
-  background: rgba(56, 189, 248, 0.2);
-  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(56, 189, 248, 0.35);
+  background: rgba(255, 255, 255, 0.28);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

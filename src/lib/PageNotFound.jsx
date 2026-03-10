@@ -5,16 +5,16 @@ import { Globe } from "lucide-react";
 
 export default function PageNotFound() {
   return (
-    <div className="min-h-[calc(100vh-96px)] flex items-center justify-center p-6">
-      <div className="text-center">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 mb-6">
-          <Globe className="w-8 h-8 text-cyan-400" />
+    <div className="min-h-[calc(100vh-74px)] flex items-center justify-center p-6">
+      <div className="atlas-surface-strong rounded-2xl px-10 py-12 text-center">
+        <div className="mb-6 inline-flex h-16 w-16 items-center justify-center rounded-2xl border border-white/20 bg-white/[0.06]">
+          <Globe className="h-8 w-8 text-zinc-100" />
         </div>
-        <h1 className="text-4xl font-bold text-white mb-2">404</h1>
-        <p className="text-slate-400 mb-6">This sector of the macro universe has not been charted yet.</p>
+        <h1 className="mb-2 text-4xl font-bold text-zinc-100">404</h1>
+        <p className="mb-6 text-zinc-400">This sector of the macro universe has not been charted yet.</p>
         <Link
           to={createPageUrl("WorldPulse")}
-          className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-semibold hover:from-cyan-400 hover:to-blue-500 transition-all shadow-lg shadow-cyan-500/20"
+          className="inline-flex items-center gap-2 rounded-xl border border-white/25 bg-white px-6 py-3 font-semibold text-zinc-950 transition-all hover:bg-zinc-200"
         >
           Return to World Pulse
         </Link>

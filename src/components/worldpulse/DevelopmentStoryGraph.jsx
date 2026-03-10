@@ -1,46 +1,41 @@
-import React, { useMemo, useState } from "react";
+import React, { Fragment, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowRight, BarChart3, Landmark, Newspaper, ShieldCheck, Sparkles } from "lucide-react";
 
 const NODE_TYPE_META = {
   source: {
     title: "Source",
-    tone: "text-sky-100",
-    iconTone: "text-sky-200",
-    border: "border-sky-400/45",
-    bg: "from-sky-500/35 to-sky-400/10",
+    tone: "text-zinc-200",
+    border: "border-zinc-300/45",
+    bg: "from-zinc-200/25 to-zinc-50/5",
     icon: Newspaper,
   },
   theme: {
     title: "Theme",
-    tone: "text-cyan-100",
-    iconTone: "text-cyan-200",
-    border: "border-cyan-400/45",
-    bg: "from-cyan-500/35 to-cyan-400/10",
+    tone: "text-zinc-100",
+    border: "border-zinc-100/50",
+    bg: "from-zinc-100/35 to-zinc-100/8",
     icon: Sparkles,
   },
   policy: {
     title: "Policy",
-    tone: "text-amber-100",
-    iconTone: "text-amber-200",
-    border: "border-amber-400/45",
-    bg: "from-amber-500/35 to-amber-400/10",
+    tone: "text-zinc-200",
+    border: "border-zinc-300/35",
+    bg: "from-zinc-300/22 to-zinc-200/6",
     icon: Landmark,
   },
   asset: {
     title: "Market",
-    tone: "text-rose-100",
-    iconTone: "text-rose-200",
-    border: "border-rose-400/45",
-    bg: "from-rose-500/35 to-rose-400/10",
+    tone: "text-zinc-100",
+    border: "border-zinc-100/45",
+    bg: "from-zinc-100/24 to-zinc-50/6",
     icon: BarChart3,
   },
   action: {
     title: "Action",
-    tone: "text-emerald-100",
-    iconTone: "text-emerald-200",
-    border: "border-emerald-400/45",
-    bg: "from-emerald-500/35 to-emerald-400/10",
+    tone: "text-emerald-200",
+    border: "border-emerald-200/35",
+    bg: "from-emerald-200/25 to-emerald-100/5",
     icon: ShieldCheck,
   },
 };
@@ -86,81 +81,73 @@ export default function DevelopmentStoryGraph({ graph, onSelectNode }) {
     return map;
   }, [edges]);
 
-  const displayedNodes = useMemo(() => pipelineNodes.slice(0, 5), [pipelineNodes]);
-
-  const stageLabels = useMemo(() => {
-    const fallback = ["Evidence", "Policy Path", "Market Transmission", "Portfolio Response"];
-    return displayedNodes.slice(0, -1).map((node, index) => {
-      const next = displayedNodes[index + 1];
-      const edge = edgeByLink.get(`${node.node_id}->${next.node_id}`);
-      return edge?.label || fallback[index] || "Transmission";
-    });
-  }, [displayedNodes, edgeByLink]);
-
   const handleSelect = (node) => {
     setActiveNodeId(node.node_id);
     onSelectNode?.(node);
   };
 
+  const frameWidth = useMemo(() => Math.max(680, pipelineNodes.length * 260), [pipelineNodes.length]);
+
   return (
-    <div className="rounded-xl border border-white/[0.07] bg-[#091022] px-3 py-3">
+    <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-3 backdrop-blur-md">
       <div className="mb-2 flex items-center justify-between">
-        <div className="text-xs uppercase tracking-[0.12em] text-slate-500">Story Pipeline</div>
-        <div className="text-[10px] uppercase tracking-[0.12em] text-slate-500">click a node</div>
+        <div className="text-xs uppercase tracking-[0.13em] text-zinc-500">Story Pipeline</div>
+        <div className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">select node</div>
       </div>
 
-      {displayedNodes.length ? (
-        <div className="relative h-[272px] overflow-hidden rounded-lg border border-white/[0.05] bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.1),transparent_62%)]">
-          <div className="absolute inset-x-7 top-6 bottom-6 flex flex-col justify-between">
-            <div className="grid grid-cols-5 gap-3">
-              {displayedNodes.map((node, index) => {
+      {pipelineNodes.length ? (
+        <div className="overflow-x-auto rounded-lg border border-white/10 bg-[radial-gradient(circle_at_50%_12%,rgba(255,255,255,0.14),transparent_66%)]">
+          <div className="mx-auto min-w-full px-4 py-4" style={{ width: `${frameWidth}px` }}>
+            <div className="flex items-start">
+              {pipelineNodes.map((node, index) => {
                 const isActive = activeNodeId === node.node_id;
                 const meta = NODE_TYPE_META[node.node_type] || NODE_TYPE_META.theme;
                 const Icon = meta.icon;
+                const edge = index < pipelineNodes.length - 1 ? edgeByLink.get(`${node.node_id}->${pipelineNodes[index + 1].node_id}`) : null;
 
                 return (
-                  <motion.button
-                    key={node.node_id}
-                    type="button"
-                    onClick={() => handleSelect(node)}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.06 }}
-                    className="flex flex-col items-center text-center"
-                  >
-                    <div
-                      className={`flex h-12 w-12 items-center justify-center rounded-xl border bg-gradient-to-br shadow-[0_8px_24px_rgba(2,6,23,0.45)] transition ${
-                        isActive ? `${meta.border} ${meta.bg}` : "border-white/[0.12] from-slate-700/20 to-slate-900/20"
-                      }`}
+                  <Fragment key={node.node_id}>
+                    <motion.button
+                      type="button"
+                      onClick={() => handleSelect(node)}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.05 }}
+                      className="atlas-focus-ring flex w-[168px] shrink-0 flex-col items-center rounded-xl px-2 py-2 text-center"
                     >
-                      <Icon className={`h-6 w-6 ${isActive ? meta.iconTone : "text-slate-300"}`} />
-                    </div>
-                    <div className={`mt-2 text-[9px] uppercase tracking-[0.12em] ${isActive ? meta.tone : "text-slate-500"}`}>{meta.title}</div>
-                    <div className={`mt-1 min-h-[30px] max-w-[110px] text-center text-[10px] leading-tight ${isActive ? "text-slate-100" : "text-slate-300"}`}>
-                      {clipLabel(node.label, 22)}
-                    </div>
-                  </motion.button>
+                      <div
+                        className={`flex h-14 w-14 items-center justify-center rounded-2xl border bg-gradient-to-br shadow-[0_12px_28px_rgba(0,0,0,0.48)] transition ${
+                          isActive ? `${meta.border} ${meta.bg}` : "border-white/15 from-zinc-700/20 to-zinc-900/20"
+                        }`}
+                      >
+                        <Icon className={`h-7 w-7 ${isActive ? meta.tone : "text-zinc-400"}`} />
+                      </div>
+                      <div className={`mt-2 text-[10px] uppercase tracking-[0.12em] ${isActive ? meta.tone : "text-zinc-500"}`}>{meta.title}</div>
+                      <div className={`mt-1 min-h-[34px] text-[11px] leading-tight ${isActive ? "text-zinc-100" : "text-zinc-300"}`}>
+                        {clipLabel(node.label, 34)}
+                      </div>
+                    </motion.button>
+
+                    {index < pipelineNodes.length - 1 ? (
+                      <div className="mx-1 flex w-[92px] shrink-0 flex-col items-center pt-10">
+                        <div className="relative w-full">
+                          <div className="h-[2px] w-full rounded-full bg-gradient-to-r from-white/30 via-zinc-100/70 to-white/30" />
+                          <ArrowRight className="absolute -right-1 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-300" />
+                        </div>
+                        <div className="mt-2 line-clamp-2 text-center text-[10px] uppercase tracking-[0.08em] text-zinc-500">
+                          {edge?.label || "transmission"}
+                        </div>
+                      </div>
+                    ) : null}
+                  </Fragment>
                 );
               })}
-            </div>
-
-            <div className="px-2">
-              <div className="h-[2px] rounded-full bg-gradient-to-r from-cyan-400/70 via-slate-300/60 to-cyan-400/70" />
-              <div className="mt-2 flex items-center justify-center gap-2 text-[9px] uppercase tracking-[0.08em] text-slate-500">
-                {stageLabels.map((label, idx) => (
-                  <React.Fragment key={`${label}-${idx}`}>
-                    <span>{label}</span>
-                    {idx < stageLabels.length - 1 && <ArrowRight className="h-3 w-3 text-cyan-200" />}
-                  </React.Fragment>
-                ))}
-              </div>
             </div>
           </div>
         </div>
       ) : (
-        <div className="flex h-[220px] items-center justify-center text-xs text-slate-500">No graph data available.</div>
+        <div className="flex h-[220px] items-center justify-center text-xs text-zinc-500">No graph data available.</div>
       )}
     </div>
   );
 }
-

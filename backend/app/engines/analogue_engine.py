@@ -7,7 +7,7 @@ import numpy as np
 from app.data.repository import DataRepository
 from app.engines.confidence_engine import compute_confidence
 from app.engines.explainer import make_trace
-from app.engines.world_pulse_engine import WorldPulseEngine
+from app.engines.world_pulse_engine import FactorState, WorldPulseEngine
 from app.schemas.historical import (
     HistoricalAnaloguesResponse,
     HistoricalConnection,
@@ -23,8 +23,13 @@ class AnalogueEngine:
         self.risk_weights = repository.curated.risk_weights()["analogue_feature_weights"]
         self.templates = repository.curated.explanation_templates()
 
-    async def get_analogues(self, k: int | None = None) -> HistoricalAnaloguesResponse:
-        factor_state = await self.world_pulse_engine.compute_factor_state()
+    async def get_analogues(
+        self,
+        k: int | None = None,
+        *,
+        factor_state: FactorState | None = None,
+    ) -> HistoricalAnaloguesResponse:
+        factor_state = factor_state or await self.world_pulse_engine.compute_factor_state()
         current_factors = factor_state.factors
 
         features = list(self.risk_weights.keys())

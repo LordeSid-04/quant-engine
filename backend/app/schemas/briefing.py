@@ -225,3 +225,68 @@ class DevelopmentDetailResponse(TimestampedResponse):
     development: MacroDevelopment
     confidence: ConfidenceTrace
     explanation: ExplanationTrace
+
+
+class NavigatorAttachment(BaseModel):
+    file_name: str
+    mime_type: str
+    size_bytes: int = Field(..., ge=0)
+    text_excerpt: str = ""
+    image_data_url: str | None = None
+
+
+class NewsNavigatorRequest(BaseModel):
+    prompt: str = Field(..., min_length=4, max_length=4000)
+    horizon: str = Field(default="daily", min_length=4, max_length=12)
+    attachments: list[NavigatorAttachment] = Field(default_factory=list)
+
+
+class NavigatorHighlight(BaseModel):
+    term: str
+    explanation: str
+    confidence: float = Field(..., ge=0.0, le=1.0)
+
+
+class NavigatorThemeInsight(BaseModel):
+    theme_id: str
+    label: str
+    relevance_score: float = Field(..., ge=0.0, le=1.0)
+    heat_state: str
+    local_impact: str
+    global_impact: str
+    rationale: str
+
+
+class NavigatorSourceItem(BaseModel):
+    article_id: str
+    title: str
+    url: str
+    source: str
+    published_at: datetime
+    relevance_score: float = Field(..., ge=0.0, le=1.0)
+    reason: str
+
+
+class NavigatorAttachmentInsight(BaseModel):
+    file_name: str
+    media_type: str
+    summary: str
+    relevance: str
+    impact: str
+    confidence: float = Field(..., ge=0.0, le=1.0)
+
+
+class NewsNavigatorResponse(TimestampedResponse):
+    prompt: str
+    horizon: str
+    answer: str
+    importance_analysis: str
+    local_impact_analysis: str
+    global_impact_analysis: str
+    emerging_theme_analysis: str
+    highlights: list[NavigatorHighlight]
+    theme_insights: list[NavigatorThemeInsight]
+    sources: list[NavigatorSourceItem]
+    attachment_insights: list[NavigatorAttachmentInsight] = Field(default_factory=list)
+    memory_entry_id: str
+    explanation: ExplanationTrace

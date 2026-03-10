@@ -66,6 +66,7 @@ Deterministic backend for Atlas Macro Scenario Intelligence Engine.
 - `GET /api/v1/themes/{theme_id}/timeline`
 - `GET /api/v1/themes/{theme_id}/sources`
 - `GET /api/v1/briefing/daily`
+- `POST /api/v1/briefing/news-navigator`
 - `GET /api/v1/memory/themes/{theme_id}`
 
 `/api/stooq` and `/api/stooq/batch` include a `provenance` block per quote:
@@ -80,10 +81,18 @@ World Pulse responses include `data_proof` blocks with deterministic methodology
 
 Theme APIs use deterministic keyword-weight scoring over curated + optional live RSS sources. Hot/cool state is derived via weighted temperature + hysteresis (no black-box model outputs).
 
+For real-time global news ingestion in the News Navigator flow, the backend now supports MediaStack as the primary API source (with strict reliability filtering by trusted source name/domain), plus institutional RSS as a verification layer.
+- Env key: `MEDIASTACK_API_KEY`
+- Base URL: `MEDIASTACK_BASE_URL` (default `http://api.mediastack.com/v1`)
+- Optional controls: `MEDIASTACK_KEYWORDS`, `MEDIASTACK_CATEGORIES`, `MEDIASTACK_LANGUAGES`, `MEDIASTACK_MAX_ARTICLES`
+
 Daily Briefing enriches theme outputs with standardized model-driven scores and proof objects:
 - `GET /api/v1/briefing/daily`
 - `GET /api/v1/briefing/feed-status`
 - `GET /api/v1/briefing/developments/{development_id}`
+- `POST /api/v1/briefing/news-navigator`
+
+`POST /api/v1/briefing/news-navigator` combines verified source evidence, theme heat/cool scoring, and memory-intake persistence. It runs deterministically by default, and can optionally augment narrative output using OpenAI when `OPENAI_API_KEY` is configured.
 
 ## Notes
 - Scores are standardized and traceable through source, market, and model proof bundles.

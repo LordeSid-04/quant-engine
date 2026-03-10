@@ -8,16 +8,18 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
 from app.config import get_settings
 from app.data.db import safe_execute
+from app.data.mediastack_client import MediaStackClient
 from app.data.repository import DataRepository
 from app.engines.confidence_engine import compute_confidence
 from app.engines.decay import clamp
 from app.engines.explainer import make_trace
-from app.engines.world_pulse_engine import WorldPulseEngine
+from app.engines.world_pulse_engine import FactorState, WorldPulseEngine
 from app.schemas.themes import (
     ThemeLiveItem,
     ThemeLiveResponse,
@@ -64,19 +66,31 @@ class ThemeEngine:
         self.source_quality: dict[str, float] = {
             str(key): float(value) for key, value in taxonomy.get("source_quality_weights", {}).items()
         }
+        self.mediastack = MediaStackClient()
 
         self.templates = self.repository.curated.explanation_templates()
         self.seed_articles: list[dict[str, Any]] = self.repository.curated.theme_seed_articles()
+        reliable_catalog = self.repository.curated.reliable_news_sources()
+        catalog_names = [str(item).lower() for item in reliable_catalog.get("source_names", [])]
+        catalog_domains = [str(item).lower() for item in reliable_catalog.get("domains", [])]
+        self.reliable_source_names = set(catalog_names + [str(key).lower() for key in self.source_quality.keys()])
+        self.reliable_source_domains = set(catalog_domains)
 
         self._theme_snapshot_cache: dict[str, Any] | None = None
         self._timeline_cache: list[dict[str, Any]] = []
         self._articles_cache: dict[str, dict[str, Any]] = {}
 
-    async def get_live_themes(self, *, window_hours: int, limit: int) -> ThemeLiveResponse:
+    async def get_live_themes(
+        self,
+        *,
+        window_hours: int,
+        limit: int,
+        factor_state: FactorState | None = None,
+    ) -> ThemeLiveResponse:
         bounded_window = int(clamp(window_hours, 12, 720))
         bounded_limit = int(clamp(limit, 1, 30))
 
-        factor_state = await self.world_pulse_engine.compute_factor_state()
+        factor_state = factor_state or await self.world_pulse_engine.compute_factor_state()
         articles = await self._collect_articles(window_hours=bounded_window)
         classified = self._classify_articles(articles, factor_state.factors)
         previous_snapshot = self._latest_snapshot()
@@ -334,24 +348,24 @@ class ThemeEngine:
         max_articles = max(20, int(self.settings.theme_news_max_articles))
 
         collected: list[dict[str, Any]] = []
-        for article in self.seed_articles:
-            published = _parse_datetime(article.get("published_at"))
-            if published is None:
-                continue
-            if published >= lower_bound:
-                collected.append(
-                    {
-                        "id": article.get("id") or _make_article_id(article.get("url"), article.get("title")),
-                        "title": str(article.get("title", "")),
-                        "url": str(article.get("url", "")),
-                        "source": str(article.get("source", "seed")),
-                        "published_at": published,
-                        "summary": str(article.get("summary", "")),
-                    }
-                )
-
         if self.settings.theme_news_live_enabled:
-            collected.extend(await self._fetch_live_rss_items(lower_bound=lower_bound, max_articles=max_articles))
+            api_rows = await self._fetch_live_api_items(lower_bound=lower_bound, max_articles=max_articles)
+            collected.extend(api_rows)
+
+            # Keep institution-grade RSS feeds as an additional verification layer.
+            rss_budget = max(10, min(max_articles, max_articles - len(api_rows) + 8))
+            rss_rows = await self._fetch_live_rss_items(lower_bound=lower_bound, max_articles=rss_budget)
+            collected.extend(rss_rows)
+
+        # Prefer live evidence first. Curated seed backfill is only used when API mode is unavailable.
+        api_live_mode = self.settings.theme_news_live_enabled and self.mediastack.configured
+        if not api_live_mode:
+            min_coverage_floor = min(max_articles, 18)
+            remaining_slots = max(0, min_coverage_floor - len(collected))
+            if remaining_slots > 0:
+                collected.extend(self._seed_backfill(lower_bound=lower_bound, limit=remaining_slots))
+            if not collected:
+                collected.extend(self._seed_backfill(lower_bound=None, limit=min(max_articles, 24)))
 
         deduped: dict[str, dict[str, Any]] = {}
         for article in collected:
@@ -368,6 +382,71 @@ class ThemeEngine:
         rows = sorted(deduped.values(), key=lambda item: item["published_at"], reverse=True)
         return rows[:max_articles]
 
+    async def _fetch_live_api_items(self, *, lower_bound: datetime, max_articles: int) -> list[dict[str, Any]]:
+        if not self.mediastack.configured:
+            return []
+
+        raw_items = await self.mediastack.fetch_news(
+            keywords=self.settings.mediastack_keywords,
+            categories=self.settings.mediastack_categories,
+            languages=self.settings.mediastack_languages,
+            limit=min(max_articles, int(self.settings.mediastack_max_articles)),
+        )
+        rows: list[dict[str, Any]] = []
+        for item in raw_items:
+            title = str(item.get("title", "")).strip()
+            summary = str(item.get("description", "")).strip()
+            url = str(item.get("url", "")).strip()
+            source = str(item.get("source", "")).strip() or "mediastack"
+            published = _parse_datetime(item.get("published_at")) or datetime.now(tz=timezone.utc)
+            if not title or not url:
+                continue
+            if published < lower_bound:
+                continue
+            if not self._is_reliable_source(source=source, url=url):
+                continue
+            rows.append(
+                {
+                    "id": _make_article_id(url, title),
+                    "title": title,
+                    "url": url,
+                    "source": source,
+                    "published_at": published,
+                    "summary": summary,
+                }
+            )
+
+        rows.sort(key=lambda item: item["published_at"], reverse=True)
+        return rows[:max_articles]
+
+    def _seed_backfill(self, *, lower_bound: datetime | None, limit: int) -> list[dict[str, Any]]:
+        bounded_limit = max(0, int(limit))
+        if bounded_limit <= 0:
+            return []
+
+        rows: list[dict[str, Any]] = []
+        for article in self.seed_articles:
+            published = _parse_datetime(article.get("published_at"))
+            if published is None:
+                continue
+            if lower_bound is not None and published < lower_bound:
+                continue
+            rows.append(
+                {
+                    "id": article.get("id") or _make_article_id(article.get("url"), article.get("title")),
+                    "title": str(article.get("title", "")),
+                    "url": str(article.get("url", "")),
+                    "source": str(article.get("source", "seed")),
+                    "published_at": published,
+                    "summary": str(article.get("summary", "")),
+                }
+            )
+
+            if len(rows) >= bounded_limit:
+                break
+
+        return rows
+
     async def _fetch_live_rss_items(self, *, lower_bound: datetime, max_articles: int) -> list[dict[str, Any]]:
         if not self.feed_defs:
             return []
@@ -375,20 +454,24 @@ class ThemeEngine:
         timeout = max(2.0, float(self.settings.theme_news_rss_timeout_seconds))
         items: list[dict[str, Any]] = []
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-            for feed in self.feed_defs:
+            async def fetch_feed(feed: dict[str, Any]) -> list[dict[str, Any]]:
                 url = str(feed.get("url", "")).strip()
                 source = str(feed.get("source", "rss"))
                 if not url:
-                    continue
+                    return []
                 try:
                     response = await client.get(url)
                 except Exception:
-                    continue
+                    return []
                 if response.status_code != 200 or not response.text:
+                    return []
+                return self._parse_rss_payload(response.text, source=source, lower_bound=lower_bound)
+
+            results = await asyncio.gather(*(fetch_feed(feed) for feed in self.feed_defs), return_exceptions=True)
+            for rows in results:
+                if isinstance(rows, Exception):
                     continue
-                items.extend(self._parse_rss_payload(response.text, source=source, lower_bound=lower_bound))
-                if len(items) >= max_articles:
-                    break
+                items.extend(rows)
 
         items.sort(key=lambda item: item["published_at"], reverse=True)
         return items[:max_articles]
@@ -434,7 +517,9 @@ class ThemeEngine:
             published = _parse_datetime(published_raw) or datetime.now(tz=timezone.utc)
             if published < lower_bound:
                 continue
-            if not title:
+            if not title or not link:
+                continue
+            if not self._is_reliable_source(source=source, url=link):
                 continue
 
             rows.append(
@@ -448,6 +533,31 @@ class ThemeEngine:
                 }
             )
         return rows
+
+    def _is_reliable_source(self, *, source: str, url: str) -> bool:
+        normalized_source = self._normalize_source_name(source)
+        if normalized_source in self.reliable_source_names:
+            return True
+
+        domain = self._extract_domain(url)
+        if not domain:
+            return False
+        if domain in self.reliable_source_domains:
+            return True
+        return any(domain.endswith(f".{known}") for known in self.reliable_source_domains)
+
+    def _normalize_source_name(self, source: str) -> str:
+        normalized = re.sub(r"[^a-z0-9]+", " ", str(source or "").strip().lower())
+        return re.sub(r"\s+", " ", normalized).strip()
+
+    def _extract_domain(self, url: str) -> str:
+        try:
+            netloc = urlparse(str(url or "").strip()).netloc.lower()
+        except Exception:
+            return ""
+        if netloc.startswith("www."):
+            netloc = netloc[4:]
+        return netloc
 
     def _classify_articles(
         self,

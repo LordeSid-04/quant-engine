@@ -19,6 +19,7 @@ const DAILY_BRIEF_FEED_STATUS_CACHE_KEY = "atlas:briefing-feed-status:v1";
 const DAILY_BRIEF_FEED_STATUS_TTL_MS = 20 * 1000;
 const DEVELOPMENT_DETAIL_CACHE_PREFIX = "atlas:briefing-development:v1";
 const DEVELOPMENT_DETAIL_CACHE_TTL_MS = 25 * 1000;
+const BRIEFING_REQUEST_TIMEOUT_MS = 32000;
 const THEME_MEMORY_CACHE_PREFIX = "atlas:theme-memory:v1";
 const THEME_MEMORY_CACHE_TTL_MS = 90 * 1000;
 
@@ -261,7 +262,9 @@ export async function fetchDailyBriefing({ windowHours = 72, limit = 6 } = {}) {
     window_hours: String(windowHours),
     limit: String(limit),
   });
-  const payload = await request(`${API_BASE}/briefing/daily?${query.toString()}`);
+  const payload = await request(`${API_BASE}/briefing/daily?${query.toString()}`, {
+    timeoutMs: BRIEFING_REQUEST_TIMEOUT_MS,
+  });
   writeSessionCache(DAILY_BRIEF_CACHE_KEY, payload);
   return payload;
 }
@@ -274,7 +277,9 @@ export async function fetchBriefingFeedStatus({ windowHours = 72 } = {}) {
   const query = new URLSearchParams({
     window_hours: String(windowHours),
   });
-  const payload = await request(`${API_BASE}/briefing/feed-status?${query.toString()}`);
+  const payload = await request(`${API_BASE}/briefing/feed-status?${query.toString()}`, {
+    timeoutMs: BRIEFING_REQUEST_TIMEOUT_MS,
+  });
   writeSessionCache(DAILY_BRIEF_FEED_STATUS_CACHE_KEY, payload);
   return payload;
 }
@@ -284,7 +289,9 @@ export function getCachedBriefingFeedStatus() {
 }
 
 export async function fetchDevelopmentDetail(developmentId) {
-  const payload = await request(`${API_BASE}/briefing/developments/${encodeURIComponent(developmentId)}`);
+  const payload = await request(`${API_BASE}/briefing/developments/${encodeURIComponent(developmentId)}`, {
+    timeoutMs: BRIEFING_REQUEST_TIMEOUT_MS,
+  });
   writeSessionCache(`${DEVELOPMENT_DETAIL_CACHE_PREFIX}:${developmentId}`, payload);
   return payload;
 }
@@ -305,4 +312,13 @@ export async function fetchThemeMemory(themeId, { windowHours = 720, limit = 30 
 
 export function getCachedThemeMemory(themeId) {
   return readSessionCache(`${THEME_MEMORY_CACHE_PREFIX}:${themeId}`, THEME_MEMORY_CACHE_TTL_MS);
+}
+
+export async function runNewsNavigator(payload) {
+  return request(`${API_BASE}/briefing/news-navigator`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    timeoutMs: 28000,
+  });
 }

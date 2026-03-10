@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { FlaskConical, Sparkles } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "react-router-dom";
+import { motion } from "framer-motion";
 import ScenarioControls from "../components/scenario/ScenarioControls";
 import PropagationGraph from "../components/scenario/PropagationGraph";
 import SimulationLog from "../components/scenario/SimulationLog";
-import ScenarioResults from "../components/scenario/ScenarioResults";
+import { SectionHeading, SurfaceCard } from "@/components/premium/SurfaceCard";
 import {
   fetchDailyBriefing,
   fetchScenarioOptions,
@@ -30,7 +32,15 @@ const REGION_MAP = {
   japan: "Japan",
 };
 
-export default function ScenarioLab() {
+const reveal = {
+  initial: { opacity: 0, y: 12 },
+  whileInView: { opacity: 1, y: 0 },
+  viewport: { once: true, amount: 0.18 },
+  transition: { duration: 0.45, ease: "easeOut" },
+};
+
+export default function ScenarioLab({ embedded = false }) {
+  const location = useLocation();
   const cachedOptions = getCachedScenarioOptions();
   const cachedDailyBrief = getCachedDailyBriefing();
   const { data: options, isLoading: isLoadingOptions, isError: optionsError } = useQuery({
@@ -61,37 +71,43 @@ export default function ScenarioLab() {
   });
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(location.search);
     const region = params.get("region");
     const developmentId = params.get("development_id");
     if (region && REGION_MAP[region]) {
       setRegionFromUrl(REGION_MAP[region]);
+    } else {
+      setRegionFromUrl("");
     }
     if (developmentId) {
       setDevelopmentIdFromUrl(developmentId);
+    } else {
+      setDevelopmentIdFromUrl("");
     }
-  }, []);
+  }, [location.search]);
 
   useEffect(() => {
     if (!options) return;
-    setConfig((prev) => {
-      const next = {
-        ...prev,
-        driver: options.drivers?.includes(prev.driver) ? prev.driver : options.drivers?.[0] ?? prev.driver,
-        event: options.events?.includes(prev.event) ? prev.event : options.events?.[0] ?? prev.event,
-        region: options.regions?.includes(regionFromUrl || prev.region)
-          ? (regionFromUrl || prev.region)
-          : options.regions?.[0] ?? prev.region,
-        horizon: options.horizons?.includes(prev.horizon) ? prev.horizon : options.horizons?.[0] ?? prev.horizon,
-      };
-      return next;
-    });
+    setConfig((prev) => ({
+      ...prev,
+      driver: options.drivers?.includes(prev.driver) ? prev.driver : options.drivers?.[0] ?? prev.driver,
+      event: options.events?.includes(prev.event) ? prev.event : options.events?.[0] ?? prev.event,
+      region: options.regions?.includes(regionFromUrl || prev.region) ? (regionFromUrl || prev.region) : options.regions?.[0] ?? prev.region,
+      horizon: options.horizons?.includes(prev.horizon) ? prev.horizon : options.horizons?.[0] ?? prev.horizon,
+    }));
   }, [options, regionFromUrl]);
 
   useEffect(() => {
-    if (!developmentIdFromUrl || !options || !dailyBrief?.developments?.length) return;
+    if (!developmentIdFromUrl) {
+      setPresetDevelopment(null);
+      return;
+    }
+    if (!options || !dailyBrief?.developments?.length) return;
     const development = dailyBrief.developments.find((item) => item.development_id === developmentIdFromUrl);
-    if (!development?.scenario_preset) return;
+    if (!development?.scenario_preset) {
+      setPresetDevelopment(null);
+      return;
+    }
 
     const preset = development.scenario_preset;
     setPresetDevelopment(development);
@@ -157,56 +173,56 @@ export default function ScenarioLab() {
   };
 
   return (
-    <div className="min-h-[calc(100vh-96px)] p-4 sm:p-6 lg:p-8">
-      <div className="mx-auto max-w-[1500px] space-y-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-500/20 bg-gradient-to-br from-cyan-500/20 to-blue-600/20">
-              <FlaskConical className="h-5 w-5 text-cyan-400" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold tracking-tight text-white">Scenario Lab</h1>
-              <p className="text-xs text-slate-500">Simulate macro shocks and inspect cross-asset propagation paths</p>
-            </div>
-          </div>
-          <div className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-3 py-1 text-[10px] uppercase tracking-[0.14em] text-cyan-200">
-            Pipeline Simulation
-          </div>
-        </div>
+    <div className={`${embedded ? "min-h-0" : "min-h-[calc(100vh-74px)]"} px-4 py-4 sm:px-6 sm:py-5 lg:px-8 lg:py-6`}>
+      <div className="mx-auto max-w-[1550px] space-y-5">
+        <motion.div {...reveal}>
+          <SurfaceCard tone="strong" className="p-5 sm:p-6">
+            <SectionHeading
+              eyebrow="Scenario Engine"
+              title="Stress Test Macro Transmission Paths"
+              description="Calibrate drivers, inject shocks, and inspect simulated spillover across assets, regions, and confidence regimes."
+              action={<div className="atlas-chip">Pipeline Simulation</div>}
+            />
+          </SurfaceCard>
+        </motion.div>
 
-        {presetDevelopment && (
-          <div className="atlas-glass rounded-xl border border-cyan-400/25 px-4 py-3">
-            <div className="text-[10px] uppercase tracking-[0.12em] text-cyan-300">Live Preset Loaded</div>
-            <div className="mt-1 flex items-start gap-2 text-sm text-slate-100">
-              <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-cyan-300" />
-              <span>{presetDevelopment.title}</span>
-            </div>
-            <div className="mt-1 text-xs text-slate-400">
-              {presetDevelopment.label} | importance {presetDevelopment.importance} | state {presetDevelopment.state}
-            </div>
-          </div>
-        )}
+        {presetDevelopment ? (
+          <motion.div {...reveal}>
+            <SurfaceCard tone="soft" className="rounded-xl px-4 py-3">
+              <div className="text-[10px] uppercase tracking-[0.12em] text-zinc-400">Live Preset Loaded</div>
+              <div className="mt-1 flex items-start gap-2 text-sm text-zinc-100">
+                <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-200" />
+                <span>{presetDevelopment.title}</span>
+              </div>
+              <div className="mt-1 text-xs text-zinc-500">
+                {presetDevelopment.label} | importance {presetDevelopment.importance} | state {presetDevelopment.state}
+              </div>
+            </SurfaceCard>
+          </motion.div>
+        ) : null}
 
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[340px_1fr]">
-          <ScenarioControls
-            config={config}
-            setConfig={setConfig}
-            onRun={handleRun}
-            onReset={handleReset}
-            isRunning={isRunning}
-            options={options}
-          />
-          <div className="space-y-5">
+        <motion.div {...reveal} className="grid grid-cols-1 gap-4 lg:grid-cols-[340px_1fr]">
+          <ScenarioControls config={config} setConfig={setConfig} onRun={handleRun} onReset={handleReset} isRunning={isRunning} options={options} />
+          <div className="space-y-4">
             <SimulationLog logs={executionLogs} isRunning={isRunning} />
-            <div className="min-h-[450px]">
+            <div className="min-h-[460px]">
               <PropagationGraph isRunning={isRunning} result={results} runId={graphRunId} />
             </div>
-            {isLoadingOptions && <div className="text-xs text-slate-400">Loading scenario options...</div>}
-            {optionsError && <div className="text-xs text-rose-300">Failed to load scenario options.</div>}
-            {runError && <div className="text-xs text-rose-300">{runError}</div>}
-            {results && <ScenarioResults result={results} />}
+            {isLoadingOptions ? <div className="text-xs text-zinc-500">Loading scenario options...</div> : null}
+            {optionsError ? <div className="text-xs text-rose-300">Failed to load scenario options.</div> : null}
+            {runError ? <div className="text-xs text-rose-300">{runError}</div> : null}
           </div>
-        </div>
+        </motion.div>
+
+        <motion.div {...reveal} className="flex items-start gap-3 rounded-xl p-4 text-zinc-300">
+          <FlaskConical className="mt-0.5 h-5 w-5 shrink-0 text-zinc-200" />
+          <div>
+            <h3 className="mb-1 text-sm font-semibold text-zinc-100">Scenario Guidance</h3>
+            <p className="text-xs leading-relaxed text-zinc-400">
+              Higher severity increases shock amplitude and activation depth. Use shorter horizons for tactical reaction maps and longer horizons for structural propagation.
+            </p>
+          </div>
+        </motion.div>
       </div>
     </div>
   );

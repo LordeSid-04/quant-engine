@@ -50,6 +50,7 @@
 import { lazy } from 'react';
 import __Layout from './Layout.jsx';
 
+const AtlasFlow = lazy(() => import('./pages/AtlasFlow'));
 const WorldPulse = lazy(() => import('./pages/WorldPulse'));
 const ScenarioLab = lazy(() => import('./pages/ScenarioLab'));
 const HistoricalAtlas = lazy(() => import('./pages/HistoricalAtlas'));
@@ -58,6 +59,7 @@ const EvidenceExplorer = lazy(() => import('./pages/EvidenceExplorer'));
 
 
 export const PAGES = {
+    "AtlasFlow": AtlasFlow,
     "WorldPulse": WorldPulse,
     "ScenarioLab": ScenarioLab,
     "HistoricalAtlas": HistoricalAtlas,
@@ -66,7 +68,7 @@ export const PAGES = {
 }
 
 export const pagesConfig = {
-    mainPage: "WorldPulse",
+    mainPage: "AtlasFlow",
     Pages: PAGES,
     Layout: __Layout,
 };

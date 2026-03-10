@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query
 
 from app.api.deps import AuthRequired, get_briefing_engine
-from app.schemas.briefing import DailyBriefResponse, DevelopmentDetailResponse, FeedStatus
+from app.schemas.briefing import DailyBriefResponse, DevelopmentDetailResponse, FeedStatus, NewsNavigatorRequest, NewsNavigatorResponse
 
 router = APIRouter(prefix="/api/v1/briefing", tags=["briefing"], dependencies=[AuthRequired])
 
@@ -28,3 +28,9 @@ async def briefing_development_detail(development_id: str) -> DevelopmentDetailR
 async def briefing_feed_status(window_hours: int = Query(default=72, ge=24, le=720)) -> FeedStatus:
     engine = get_briefing_engine()
     return await engine.get_feed_status(window_hours=window_hours)
+
+
+@router.post("/news-navigator", response_model=NewsNavigatorResponse)
+async def briefing_news_navigator(payload: NewsNavigatorRequest) -> NewsNavigatorResponse:
+    engine = get_briefing_engine()
+    return await engine.run_news_navigator(payload=payload)

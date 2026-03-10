@@ -107,8 +107,8 @@ class WorldPulseEngine:
             market_inputs_used=valid,
         )
 
-    async def build_world_pulse(self) -> WorldPulseResponse:
-        factor_state = await self.compute_factor_state()
+    async def build_world_pulse(self, *, factor_state: FactorState | None = None) -> WorldPulseResponse:
+        factor_state = factor_state or await self.compute_factor_state()
         factors = factor_state.factors
         hotspot_objects = self._build_country_hotspots(factor_state)
         arc_objects = self._build_global_arcs(hotspot_objects, factors)

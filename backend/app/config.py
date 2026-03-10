@@ -66,10 +66,27 @@ class Settings(BaseSettings):
         alias="SUPABASE_SNAPSHOT_UPSERT_INTERVAL_SECONDS",
     )
 
-    theme_news_live_enabled: bool = Field(default=False, alias="THEME_NEWS_LIVE_ENABLED")
+    theme_news_live_enabled: bool = Field(default=True, alias="THEME_NEWS_LIVE_ENABLED")
     theme_news_window_hours: int = Field(default=72, alias="THEME_NEWS_WINDOW_HOURS")
     theme_news_rss_timeout_seconds: float = Field(default=6.0, alias="THEME_NEWS_RSS_TIMEOUT_SECONDS")
     theme_news_max_articles: int = Field(default=80, alias="THEME_NEWS_MAX_ARTICLES")
+    mediastack_api_key: str = Field(default="", alias="MEDIASTACK_API_KEY")
+    mediastack_base_url: str = Field(default="http://api.mediastack.com/v1", alias="MEDIASTACK_BASE_URL")
+    mediastack_timeout_seconds: float = Field(default=6.0, alias="MEDIASTACK_TIMEOUT_SECONDS")
+    mediastack_max_articles: int = Field(default=80, alias="MEDIASTACK_MAX_ARTICLES")
+    mediastack_keywords: str = Field(
+        default=(
+            "inflation,central bank,interest rates,fiscal policy,trade policy,geopolitical risk,"
+            "energy market,recession,liquidity,regulation"
+        ),
+        alias="MEDIASTACK_KEYWORDS",
+    )
+    mediastack_categories: str = Field(default="business,general", alias="MEDIASTACK_CATEGORIES")
+    mediastack_languages: str = Field(default="en", alias="MEDIASTACK_LANGUAGES")
+
+    openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
+    openai_model: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL")
+    openai_base_url: str = Field(default="https://api.openai.com/v1", alias="OPENAI_BASE_URL")
 
     time_decay_half_life_hours: float = Field(default=48.0, alias="TIME_DECAY_HALF_LIFE_HOURS")
 

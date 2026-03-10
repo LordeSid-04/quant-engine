@@ -80,6 +80,12 @@ create table if not exists public.daily_brief_snapshots (
   payload jsonb not null
 );
 
+create table if not exists public.public_memory_entries (
+  id text primary key,
+  created_at timestamptz not null default now(),
+  payload jsonb not null
+);
+
 create index if not exists idx_theme_scores_theme_asof
   on public.theme_scores_timeseries (theme_id, as_of);
 
@@ -92,6 +98,9 @@ create index if not exists idx_news_articles_matched_themes
 create index if not exists idx_daily_brief_snapshots_asof
   on public.daily_brief_snapshots (as_of desc);
 
+create index if not exists idx_public_memory_entries_created_at
+  on public.public_memory_entries (created_at desc);
+
 alter table public.market_quotes_latest enable row level security;
 alter table public.risk_snapshots enable row level security;
 alter table public.world_pulse_snapshots enable row level security;
@@ -99,6 +108,7 @@ alter table public.theme_snapshots enable row level security;
 alter table public.theme_scores_timeseries enable row level security;
 alter table public.news_articles enable row level security;
 alter table public.daily_brief_snapshots enable row level security;
+alter table public.public_memory_entries enable row level security;
 
 drop policy if exists "allow_service_role_market_quotes" on public.market_quotes_latest;
 create policy "allow_service_role_market_quotes"
@@ -151,6 +161,14 @@ with check (true);
 drop policy if exists "allow_service_role_daily_brief" on public.daily_brief_snapshots;
 create policy "allow_service_role_daily_brief"
 on public.daily_brief_snapshots
+for all
+to service_role
+using (true)
+with check (true);
+
+drop policy if exists "allow_service_role_public_memory" on public.public_memory_entries;
+create policy "allow_service_role_public_memory"
+on public.public_memory_entries
 for all
 to service_role
 using (true)

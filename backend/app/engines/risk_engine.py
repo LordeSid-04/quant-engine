@@ -8,7 +8,7 @@ from app.data.repository import DataRepository
 from app.engines.confidence_engine import compute_confidence
 from app.engines.decay import clamp
 from app.engines.explainer import make_trace
-from app.engines.world_pulse_engine import WorldPulseEngine
+from app.engines.world_pulse_engine import FactorState, WorldPulseEngine
 from app.schemas.risk import RiskCategory, RiskRadarResponse, RiskSummaryCard
 
 
@@ -19,8 +19,8 @@ class RiskEngine:
         self.risk_config = repository.curated.risk_weights()
         self.templates = repository.curated.explanation_templates()
 
-    async def get_risk_radar(self) -> RiskRadarResponse:
-        factor_state = await self.world_pulse_engine.compute_factor_state()
+    async def get_risk_radar(self, *, factor_state: FactorState | None = None) -> RiskRadarResponse:
+        factor_state = factor_state or await self.world_pulse_engine.compute_factor_state()
         factors = factor_state.factors
 
         categories: list[RiskCategory] = []
