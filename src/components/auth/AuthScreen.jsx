@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import * as THREE from "three";
 import { ArrowRight, LogIn, UserPlus } from "lucide-react";
 
+import DnaParticleBackdrop from "@/components/auth/DnaParticleBackdrop";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/lib/AuthContext";
@@ -50,7 +50,7 @@ export default function AuthScreen() {
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_40%_35%,rgba(255,255,255,0.025),transparent_48%)]" />
       </div>
 
-      <HemisphereParticleBackdrop />
+      <DnaParticleBackdrop />
 
       <div className="absolute left-4 top-4 z-20 sm:left-6 sm:top-5">
         <AtlasParticleWordmark text="ATLAS" />
@@ -315,183 +315,6 @@ function AtlasParticleWordmark({ text = "ATLAS" }) {
   }, [palette, text]);
 
   return <canvas ref={canvasRef} className="h-[64px] w-[252px]" aria-hidden />;
-}
-
-function HemisphereParticleBackdrop() {
-  const hostRef = useRef(null);
-
-  useEffect(() => {
-    const host = hostRef.current;
-    if (!host) return undefined;
-
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 60);
-    camera.position.set(0, 0.2, 8.8);
-
-    const renderer = new THREE.WebGLRenderer({
-      alpha: true,
-      antialias: false,
-      powerPreference: "low-power",
-    });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25));
-    host.appendChild(renderer.domElement);
-
-    const ambient = new THREE.AmbientLight(0xdde5ff, 0.66);
-    scene.add(ambient);
-
-    const keyLight = new THREE.DirectionalLight(0x57e4ff, 0.64);
-    keyLight.position.set(3.8, 3.2, 4.2);
-    scene.add(keyLight);
-
-    const rimLight = new THREE.DirectionalLight(0xc58dff, 0.56);
-    rimLight.position.set(-4.2, 2.4, 3.1);
-    scene.add(rimLight);
-
-    const sphereGroup = new THREE.Group();
-    sphereGroup.position.y = -2.35;
-    scene.add(sphereGroup);
-
-    const isMobile = window.innerWidth < 768;
-    const particleCount = isMobile ? 1700 : 2600;
-    const radius = 2.85;
-
-    const basePositions = new Float32Array(particleCount * 3);
-    const drawPositions = new Float32Array(particleCount * 3);
-    const colors = new Float32Array(particleCount * 3);
-    const seeds = new Float32Array(particleCount);
-
-    const c0 = new THREE.Color(0x57e4ff);
-    const c1 = new THREE.Color(0x9ba3ff);
-    const c2 = new THREE.Color(0xc58dff);
-
-    for (let index = 0; index < particleCount; index += 1) {
-      const theta = Math.random() * Math.PI * 2;
-      const yNorm = Math.pow(Math.random(), 0.65);
-      const radial = Math.sqrt(Math.max(0, 1 - yNorm * yNorm));
-      const distance = radius + (Math.random() - 0.5) * 0.08;
-
-      const x = Math.cos(theta) * radial * distance;
-      const y = yNorm * distance;
-      const z = Math.sin(theta) * radial * distance;
-
-      basePositions[index * 3] = x;
-      basePositions[index * 3 + 1] = y;
-      basePositions[index * 3 + 2] = z;
-
-      drawPositions[index * 3] = x;
-      drawPositions[index * 3 + 1] = y;
-      drawPositions[index * 3 + 2] = z;
-
-      const blendA = c0.clone().lerp(c1, yNorm);
-      const blendB = c1.clone().lerp(c2, (Math.sin(theta) + 1) * 0.5);
-      blendA.lerp(blendB, 0.5);
-      colors[index * 3] = blendA.r;
-      colors[index * 3 + 1] = blendA.g;
-      colors[index * 3 + 2] = blendA.b;
-
-      seeds[index] = Math.random() * Math.PI * 2;
-    }
-
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position", new THREE.BufferAttribute(drawPositions, 3));
-    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-
-    const material = new THREE.PointsMaterial({
-      size: isMobile ? 0.042 : 0.036,
-      vertexColors: true,
-      transparent: true,
-      opacity: 0.9,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      sizeAttenuation: true,
-    });
-
-    const particleCloud = new THREE.Points(geometry, material);
-    sphereGroup.add(particleCloud);
-
-    const equatorGeometry = new THREE.RingGeometry(radius * 0.98, radius * 1.02, 120);
-    const equatorMaterial = new THREE.MeshBasicMaterial({
-      color: 0xa6ccff,
-      transparent: true,
-      opacity: 0.2,
-      side: THREE.DoubleSide,
-    });
-    const equator = new THREE.Mesh(equatorGeometry, equatorMaterial);
-    equator.rotation.x = Math.PI / 2;
-    equator.position.y = 0;
-    sphereGroup.add(equator);
-
-    let width = 1;
-    let height = 1;
-    let targetRotY = 0;
-    let targetRotX = -0.1;
-    let rafId = 0;
-
-    const resize = () => {
-      width = Math.max(1, host.clientWidth);
-      height = Math.max(1, host.clientHeight);
-      camera.aspect = width / height;
-      camera.updateProjectionMatrix();
-      renderer.setSize(width, height, false);
-    };
-
-    const onPointerMove = (event) => {
-      const nx = event.clientX / window.innerWidth - 0.5;
-      const ny = event.clientY / window.innerHeight - 0.5;
-      targetRotY = nx * 0.75;
-      targetRotX = -0.12 + ny * 0.34;
-    };
-
-    const animate = (time) => {
-      const t = time * 0.001;
-      const positionAttr = geometry.getAttribute("position");
-
-      for (let index = 0; index < particleCount; index += 1) {
-        const baseX = basePositions[index * 3];
-        const baseY = basePositions[index * 3 + 1];
-        const baseZ = basePositions[index * 3 + 2];
-        const wave = Math.sin(t * 1.55 + seeds[index] * 5.2) * 0.05;
-
-        drawPositions[index * 3] = baseX * (1 + wave * 0.48);
-        drawPositions[index * 3 + 1] = baseY + wave * 0.17;
-        drawPositions[index * 3 + 2] = baseZ * (1 + wave * 0.48);
-      }
-      positionAttr.needsUpdate = true;
-
-      sphereGroup.rotation.y += (targetRotY - sphereGroup.rotation.y) * 0.03;
-      sphereGroup.rotation.x += (targetRotX - sphereGroup.rotation.x) * 0.03;
-      sphereGroup.rotation.y += 0.0019;
-      equator.rotation.z += 0.0014;
-
-      renderer.render(scene, camera);
-      rafId = window.requestAnimationFrame(animate);
-    };
-
-    resize();
-    window.addEventListener("resize", resize);
-    window.addEventListener("pointermove", onPointerMove);
-    rafId = window.requestAnimationFrame(animate);
-
-    return () => {
-      window.cancelAnimationFrame(rafId);
-      window.removeEventListener("resize", resize);
-      window.removeEventListener("pointermove", onPointerMove);
-      geometry.dispose();
-      material.dispose();
-      equatorGeometry.dispose();
-      equatorMaterial.dispose();
-      renderer.dispose();
-      host.innerHTML = "";
-    };
-  }, []);
-
-  return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[2] h-[72vh]">
-      <div ref={hostRef} className="absolute inset-x-0 bottom-[-14vh] h-[86vh]" />
-      <div className="absolute inset-x-0 bottom-0 h-[60vh] bg-[radial-gradient(60%_72%_at_50%_100%,rgba(146,148,255,0.22),transparent_76%)]" />
-      <div className="absolute inset-x-0 bottom-0 h-[24vh] bg-[linear-gradient(180deg,transparent_0%,rgba(3,3,3,0.28)_72%,rgba(3,3,3,0.45)_100%)]" />
-    </div>
-  );
 }
 
 function ModeButton({ active, onClick, icon: Icon, label }) {
