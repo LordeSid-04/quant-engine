@@ -5,7 +5,7 @@ import { pagesConfig } from './pages.config'
 import { Suspense } from 'react';
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
-import UserNotRegisteredError from '@/components/UserNotRegisteredError';
+import AuthScreen from '@/components/auth/AuthScreen';
 import { motion } from "framer-motion";
 
 const { Layout, mainPage, Pages } = pagesConfig;
@@ -28,10 +28,9 @@ const LayoutWrapper = ({ children, currentPageName }) => Layout ? (
 );
 
 const AuthenticatedApp = () => {
-  const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
+  const { isLoadingAuth, isAuthenticated } = useAuth();
 
-  // Show loading spinner while checking app public settings or auth
-  if (isLoadingPublicSettings || isLoadingAuth) {
+  if (isLoadingAuth) {
     return (
       <div className="fixed inset-0 flex items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-zinc-700 border-t-zinc-100" />
@@ -39,18 +38,10 @@ const AuthenticatedApp = () => {
     );
   }
 
-  // Handle authentication errors
-  if (authError) {
-    if (authError.type === 'user_not_registered') {
-      return <UserNotRegisteredError />;
-    } else if (authError.type === 'auth_required') {
-      // Redirect to login automatically
-      navigateToLogin();
-      return null;
-    }
+  if (!isAuthenticated) {
+    return <AuthScreen />;
   }
 
-  // Render the main app
   return (
     <Suspense fallback={<RouteLoader />}>
       <Routes>

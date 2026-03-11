@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime
 
 from pydantic import BaseModel, Field
@@ -210,14 +212,59 @@ class ThemeDiscussionSnapshot(BaseModel):
     primary_action: str
 
 
+class ThemeMemoryBrief(BaseModel):
+    memory_mandate: str
+    last_consensus: str
+    what_changed: list[str]
+    recurring_patterns: list[str]
+    carry_forward_actions: list[str]
+    unresolved_questions: list[str]
+    institutional_notes: list[str]
+
+
 class ThemeMemoryResponse(TimestampedResponse):
     theme_id: str
     label: str
+    memory_brief: ThemeMemoryBrief
     discussion_history: list[ThemeDiscussionSnapshot]
     timeline_points: list[ThemeTimelinePoint]
     source_articles: list[ThemeSourceArticle]
     related_analogues: list[HistoricalRegime]
     confidence: ConfidenceTrace
+    explanation: ExplanationTrace
+
+
+class MemoryHistoryItem(BaseModel):
+    entry_id: str
+    heading: str
+    created_at: datetime
+    theme_label: str
+    prompt_preview: str
+    source_count: int = Field(default=0, ge=0)
+
+
+class MemoryHistoryResponse(TimestampedResponse):
+    entries: list[MemoryHistoryItem]
+    explanation: ExplanationTrace
+
+
+class MemoryEntryResponse(TimestampedResponse):
+    entry_id: str
+    heading: str
+    created_at: datetime
+    theme_id: str
+    theme_label: str
+    prompt: str
+    answer: str
+    horizon: str
+    analysis_mode: str
+    importance_analysis: str
+    local_impact_analysis: str
+    global_impact_analysis: str
+    emerging_theme_analysis: str
+    sources: list[NavigatorSourceItem]
+    attachment_insights: list[NavigatorAttachmentInsight] = Field(default_factory=list)
+    theme_insights: list[NavigatorThemeInsight] = Field(default_factory=list)
     explanation: ExplanationTrace
 
 
@@ -248,6 +295,7 @@ class NewsNavigatorRequest(BaseModel):
     horizon: str = Field(default="daily", min_length=4, max_length=12)
     attachments: list[NavigatorAttachment] = Field(default_factory=list)
     filters: NewsNavigatorFilters = Field(default_factory=NewsNavigatorFilters)
+    persist_memory: bool = True
 
 
 class NavigatorHighlight(BaseModel):
@@ -261,6 +309,13 @@ class NavigatorThemeInsight(BaseModel):
     label: str
     relevance_score: float = Field(..., ge=0.0, le=1.0)
     heat_state: str
+    hotness_score: int = Field(default=0, ge=0, le=100)
+    coolness_score: int = Field(default=0, ge=0, le=100)
+    trend_direction: str = "stable"
+    trend_velocity: float = 0.0
+    evidence_count: int = Field(default=0, ge=0)
+    source_diversity: int = Field(default=0, ge=0)
+    plain_english_story: str = ""
     local_impact: str
     global_impact: str
     rationale: str
@@ -318,6 +373,7 @@ class NewsNavigatorResponse(TimestampedResponse):
     sources: list[NavigatorSourceItem]
     attachment_insights: list[NavigatorAttachmentInsight] = Field(default_factory=list)
     memory_entry_id: str
+    memory_heading: str = ""
     explanation: ExplanationTrace
 
 
