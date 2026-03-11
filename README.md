@@ -5,7 +5,7 @@ Atlas is an explainable macro-intelligence platform that turns global events int
 ## Live Demo
 - Deployment: https://atlas-marco-economics-tracker.vercel.app/
 - GitHub: https://github.com/LordeSid-04/quant-engine
-- Video Pitch (max 5 mins): https://youtu.be/SN-sOanTEjY
+- Video Pitch (max 5 mins): https://youtu.be/jxmZfiHDLHk
 
 ## ABOUT (Hackathon Requirement)
 - **Project Title:** Atlas Macro Economics Tracker
@@ -69,6 +69,7 @@ Backend runs at `http://127.0.0.1:8000`.
 - **Trust:** source-linked evidence and deterministic methodology.
 - **Reusability:** persistent memory across sessions and themes.
 - **Practicality:** built for real workflow usage, not one-off demos.
+
 
 
 
