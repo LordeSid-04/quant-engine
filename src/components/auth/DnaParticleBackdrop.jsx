@@ -100,7 +100,7 @@ export default function DnaParticleBackdrop() {
     scene.fog = new THREE.Fog(0x03050a, 7.5, 18);
 
     const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 42);
-    camera.position.set(0, isMobile ? 0.04 : 0.08, isMobile ? 8.7 : 9.8);
+    camera.position.set(0, 0, isMobile ? 8.7 : 9.8);
 
     let renderer;
     try {
@@ -119,6 +119,7 @@ export default function DnaParticleBackdrop() {
     host.appendChild(renderer.domElement);
 
     const sphereGroup = new THREE.Group();
+    sphereGroup.position.set(0, 0, 0);
     sphereGroup.rotation.x = isMobile ? 0.18 : 0.14;
     sphereGroup.rotation.y = isMobile ? 0.3 : 0.42;
     scene.add(sphereGroup);
@@ -355,7 +356,6 @@ export default function DnaParticleBackdrop() {
       sphereGroup.rotation.y += (targetRotationY - sphereGroup.rotation.y) * 0.05;
       sphereGroup.rotation.z += (targetRotationZ - sphereGroup.rotation.z) * 0.05;
       sphereGroup.rotation.y += reducedMotion ? 0.0006 : 0.0012;
-      sphereGroup.position.y = Math.sin(elapsed * 0.52) * 0.06;
 
       const pulseScale = 1 + (heartbeat * 0.035) + (Math.sin(elapsed * 0.84) * 0.012);
       sphereGroup.scale.setScalar(pulseScale);
@@ -364,8 +364,8 @@ export default function DnaParticleBackdrop() {
       haze.rotation.x = Math.sin(elapsed * 0.24) * 0.06;
       hazeMaterial.opacity = 0.16 + (heartbeat * 0.05) + (activeInteraction * 0.05);
 
-      camera.position.x += (((uniforms.uPointer.value.x * 0.42)) - camera.position.x) * 0.028;
-      camera.position.y += ((((uniforms.uPointer.value.y * 0.2) + (isMobile ? 0.04 : 0.08))) - camera.position.y) * 0.03;
+      camera.position.x += (((uniforms.uPointer.value.x * 0.3)) - camera.position.x) * 0.026;
+      camera.position.y += (((uniforms.uPointer.value.y * 0.14)) - camera.position.y) * 0.026;
       camera.lookAt(0, 0, 0);
 
       renderer.render(scene, camera);

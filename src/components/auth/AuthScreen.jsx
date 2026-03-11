@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useState } from "react";
 import { ArrowRight, LogIn, UserPlus } from "lucide-react";
 
 import DnaParticleBackdrop from "@/components/auth/DnaParticleBackdrop";
+import AtlasMark from "@/components/brand/AtlasMark";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/lib/AuthContext";
@@ -16,8 +17,6 @@ const SIGNUP_DEFAULTS = {
   email: "",
   password: "",
 };
-
-const PARTICLE_GRADIENT = ["#57e4ff", "#78d4ff", "#9ba3ff", "#c58dff", "#f0b6ff", "#adf2ff"];
 
 export default function AuthScreen() {
   const { login, signup, authError } = useAuth();
@@ -53,7 +52,7 @@ export default function AuthScreen() {
       <DnaParticleBackdrop />
 
       <div className="absolute left-4 top-4 z-20 sm:left-6 sm:top-5">
-        <AtlasParticleWordmark text="ATLAS" />
+        <AtlasBrandLockup />
       </div>
 
       <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-[10vh] sm:px-6">
@@ -184,137 +183,13 @@ function AuthPanel({
   );
 }
 
-function AtlasParticleWordmark({ text = "ATLAS" }) {
-  const canvasRef = useRef(null);
-  const palette = useMemo(() => PARTICLE_GRADIENT, []);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return undefined;
-    const context = canvas.getContext("2d", { alpha: true });
-    if (!context) return undefined;
-
-    const width = 252;
-    const height = 64;
-    const ratio = Math.min(window.devicePixelRatio || 1, 1.4);
-    canvas.width = Math.floor(width * ratio);
-    canvas.height = Math.floor(height * ratio);
-    canvas.style.width = `${width}px`;
-    canvas.style.height = `${height}px`;
-    context.setTransform(ratio, 0, 0, ratio, 0, 0);
-
-    const mask = document.createElement("canvas");
-    mask.width = width;
-    mask.height = height;
-    const mtx = mask.getContext("2d");
-    if (!mtx) return undefined;
-    mtx.clearRect(0, 0, width, height);
-    mtx.textAlign = "center";
-    mtx.textBaseline = "middle";
-    mtx.font = '700 38px "Segoe UI", sans-serif';
-    mtx.fillStyle = "#ffffff";
-    mtx.fillText(text, width * 0.5, height * 0.54);
-
-    const image = mtx.getImageData(0, 0, width, height).data;
-    const targets = [];
-    for (let y = 0; y < height; y += 2) {
-      for (let x = 0; x < width; x += 2) {
-        const alpha = image[(y * width + x) * 4 + 3];
-        if (alpha > 120) {
-          targets.push({ x, y });
-        }
-      }
-    }
-    if (!targets.length) return undefined;
-
-    const particleCount = Math.min(760, Math.max(460, targets.length));
-    const particles = Array.from({ length: particleCount }, (_, index) => ({
-      x: width * 0.5 + (Math.random() - 0.5) * 120,
-      y: height * 0.5 + (Math.random() - 0.5) * 68,
-      vx: (Math.random() - 0.5) * 0.4,
-      vy: (Math.random() - 0.5) * 0.4,
-      size: 1 + Math.random() * 1.6,
-      color: palette[index % palette.length],
-      seed: Math.random() * Math.PI * 2,
-    }));
-
-    const pointer = { x: -9999, y: -9999, active: false };
-    const onPointerMove = (event) => {
-      const rect = canvas.getBoundingClientRect();
-      pointer.x = event.clientX - rect.left;
-      pointer.y = event.clientY - rect.top;
-      pointer.active = true;
-    };
-    const onPointerLeave = () => {
-      pointer.active = false;
-      pointer.x = -9999;
-      pointer.y = -9999;
-    };
-
-    canvas.addEventListener("pointermove", onPointerMove);
-    canvas.addEventListener("pointerleave", onPointerLeave);
-
-    let rafId = 0;
-    const animate = (time) => {
-      const seconds = time * 0.001;
-      const cycle = (Math.sin(seconds * 0.95) + 1) * 0.5;
-      const gatherStrength = 0.42 + cycle * 0.58;
-
-      context.clearRect(0, 0, width, height);
-      context.globalCompositeOperation = "lighter";
-
-      for (let index = 0; index < particles.length; index += 1) {
-        const particle = particles[index];
-        const target = targets[index % targets.length];
-
-        const spreadX = Math.cos(seconds * 1.18 + particle.seed) * 12 * (1 - gatherStrength);
-        const spreadY = Math.sin(seconds * 1.32 + particle.seed) * 9 * (1 - gatherStrength);
-        const targetX = target.x + spreadX;
-        const targetY = target.y + spreadY;
-
-        particle.vx += (targetX - particle.x) * (0.036 + gatherStrength * 0.05);
-        particle.vy += (targetY - particle.y) * (0.036 + gatherStrength * 0.05);
-
-        if (pointer.active) {
-          const dx = particle.x - pointer.x;
-          const dy = particle.y - pointer.y;
-          const distanceSq = dx * dx + dy * dy;
-          if (distanceSq > 0.0001 && distanceSq < 2400) {
-            const strength = (1 - distanceSq / 2400) * 0.8;
-            particle.vx += (dx / Math.sqrt(distanceSq)) * strength;
-            particle.vy += (dy / Math.sqrt(distanceSq)) * strength;
-          }
-        }
-
-        particle.vx *= 0.8;
-        particle.vy *= 0.8;
-        particle.x += particle.vx;
-        particle.y += particle.vy;
-
-        context.fillStyle = particle.color;
-        context.globalAlpha = 0.8;
-        context.shadowBlur = 8;
-        context.shadowColor = particle.color;
-        context.beginPath();
-        context.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
-        context.fill();
-      }
-
-      context.globalCompositeOperation = "source-over";
-      context.globalAlpha = 1;
-      context.shadowBlur = 0;
-      rafId = window.requestAnimationFrame(animate);
-    };
-
-    rafId = window.requestAnimationFrame(animate);
-    return () => {
-      canvas.removeEventListener("pointermove", onPointerMove);
-      canvas.removeEventListener("pointerleave", onPointerLeave);
-      window.cancelAnimationFrame(rafId);
-    };
-  }, [palette, text]);
-
-  return <canvas ref={canvasRef} className="h-[64px] w-[252px]" aria-hidden />;
+function AtlasBrandLockup() {
+  return (
+    <div className="flex items-center gap-3 rounded-full border border-white/10 bg-black/20 px-3.5 py-2 backdrop-blur-md">
+      <AtlasMark className="h-7 w-7 shrink-0 drop-shadow-[0_0_14px_rgba(255,255,255,0.12)]" />
+      <span className="text-[0.95rem] font-semibold tracking-[0.32em] text-zinc-100 sm:text-[1.02rem]">ATLAS</span>
+    </div>
+  );
 }
 
 function ModeButton({ active, onClick, icon: Icon, label }) {
