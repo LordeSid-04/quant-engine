@@ -28,10 +28,6 @@ Frontend: http://127.0.0.1:5173
 Backend: http://127.0.0.1:8000
 cd backend
 python -m venv .venv
-# Windows
-.venv\Scripts\activate
-# macOS/Linux
-# source .venv/bin/activate
 
 pip install -r requirements-dev.txt
 cp .env.example .env   # Windows PowerShell: Copy-Item .env.example .env
@@ -51,6 +47,7 @@ GET /api/v1/world-pulse/live
 POST /api/v1/scenario/run
 POST /api/v1/briefing/news-navigator
 GET /api/v1/memory/history
+
 
 
 
