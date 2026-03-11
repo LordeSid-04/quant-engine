@@ -36,12 +36,12 @@ python -m venv .venv
 pip install -r requirements-dev.txt
 cp .env.example .env   # Windows PowerShell: Copy-Item .env.example .env
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-3) Required Environment Variables (backend/.env)
+# 3) Required Environment Variables (backend/.env)
 SUPABASE_URL
 SUPABASE_ANON_KEY
 SUPABASE_SERVICE_ROLE_KEY
 OPENAI_API_KEY (optional but recommended for richer narrative generation)
-4) Auth Mode
+# 4) Auth Mode
 AUTH_REQUIRED=true for full login/signup flow
 AUTH_REQUIRED=false for local testing without auth gate
 Key API Endpoints
@@ -51,5 +51,6 @@ GET /api/v1/world-pulse/live
 POST /api/v1/scenario/run
 POST /api/v1/briefing/news-navigator
 GET /api/v1/memory/history
+
 
 
