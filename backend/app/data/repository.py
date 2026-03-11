@@ -780,11 +780,9 @@ class DataRepository:
         self._public_memory_entries = [row] + self._public_memory_entries[:199]
 
         if self.supabase is not None:
-            self._dispatch_supabase_write(
-                lambda: safe_execute(
-                    self.supabase.table("public_memory_entries").insert(row),
-                    default=[],
-                )
+            safe_execute(
+                self.supabase.table("public_memory_entries").insert(row),
+                default=[],
             )
         return entry_id
 
@@ -814,6 +812,28 @@ class DataRepository:
             entries = filtered
 
         return entries[:bounded_limit]
+
+    def get_public_memory_entry(self, entry_id: str) -> dict[str, Any] | None:
+        normalized_id = str(entry_id or "").strip()
+        if not normalized_id:
+            return None
+
+        entries = [dict(item) for item in self._public_memory_entries]
+        if not entries and self.supabase is not None:
+            rows = safe_execute(
+                self.supabase.table("public_memory_entries").select("*").eq("id", normalized_id).limit(1),
+                default=[],
+            )
+            if rows:
+                row = dict(rows[0])
+                self._public_memory_entries = [row] + self._public_memory_entries[:199]
+                return row
+            return None
+
+        for row in entries:
+            if str(row.get("id", "")).strip() == normalized_id:
+                return row
+        return None
 
     def _dispatch_supabase_write(self, operation: Any) -> None:
         if self.supabase is None:

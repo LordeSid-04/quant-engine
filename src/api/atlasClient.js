@@ -22,9 +22,46 @@ const DEVELOPMENT_DETAIL_CACHE_TTL_MS = 25 * 1000;
 const BRIEFING_REQUEST_TIMEOUT_MS = 70000;
 const THEME_MEMORY_CACHE_PREFIX = "atlas:theme-memory:v1";
 const THEME_MEMORY_CACHE_TTL_MS = 90 * 1000;
+const MEMORY_HISTORY_CACHE_KEY = "atlas:memory-history:v1";
+const MEMORY_HISTORY_CACHE_TTL_MS = 30 * 1000;
+const MEMORY_ENTRY_CACHE_PREFIX = "atlas:memory-entry:v1";
+const MEMORY_ENTRY_CACHE_TTL_MS = 60 * 1000;
+const AUTH_SESSION_KEY = "atlas:auth-session:v1";
 
 export function buildBackendUrl(path) {
   return BACKEND_ORIGIN ? `${BACKEND_ORIGIN}${path}` : path;
+}
+
+export function getStoredAuthSession() {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(AUTH_SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredAuthSession(session) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+export function clearStoredAuthSession() {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(AUTH_SESSION_KEY);
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+function getStoredAccessToken() {
+  return String(getStoredAuthSession()?.access_token || "");
 }
 
 async function request(path, options = {}) {
@@ -45,8 +82,14 @@ async function request(path, options = {}) {
   }
   let response;
   try {
+    const token = getStoredAccessToken();
+    const headers = new Headers(options.headers || {});
+    if (token && !headers.has("Authorization")) {
+      headers.set("Authorization", `Bearer ${token}`);
+    }
     response = await fetch(buildBackendUrl(path), {
       ...options,
+      headers,
       signal: controller.signal,
     });
   } catch (error) {
@@ -329,6 +372,39 @@ export function getCachedThemeMemory(themeId) {
   return readSessionCache(`${THEME_MEMORY_CACHE_PREFIX}:${themeId}`, THEME_MEMORY_CACHE_TTL_MS);
 }
 
+export async function fetchMemoryHistory({ limit = 80 } = {}) {
+  const query = new URLSearchParams({ limit: String(limit) });
+  const payload = await request(`${API_BASE}/memory/history?${query.toString()}`);
+  writeSessionCache(MEMORY_HISTORY_CACHE_KEY, payload);
+  return payload;
+}
+
+export function getCachedMemoryHistory() {
+  return readSessionCache(MEMORY_HISTORY_CACHE_KEY, MEMORY_HISTORY_CACHE_TTL_MS);
+}
+
+export async function fetchMemoryEntry(entryId) {
+  const payload = await request(`${API_BASE}/memory/entries/${encodeURIComponent(entryId)}`);
+  writeSessionCache(`${MEMORY_ENTRY_CACHE_PREFIX}:${entryId}`, payload);
+  return payload;
+}
+
+export function getCachedMemoryEntry(entryId) {
+  return readSessionCache(`${MEMORY_ENTRY_CACHE_PREFIX}:${entryId}`, MEMORY_ENTRY_CACHE_TTL_MS);
+}
+
+export function clearMemoryVaultCache(entryId = "") {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(MEMORY_HISTORY_CACHE_KEY);
+    if (entryId) {
+      window.sessionStorage.removeItem(`${MEMORY_ENTRY_CACHE_PREFIX}:${entryId}`);
+    }
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
 export async function runNewsNavigator(payload) {
   return request(`${API_BASE}/briefing/news-navigator`, {
     method: "POST",
@@ -359,5 +435,42 @@ export async function fetchNewsHeadlines({
   return request(`${API_BASE}/briefing/news-headlines?${query.toString()}`, {
     timeoutMs: BRIEFING_REQUEST_TIMEOUT_MS,
     signal,
+  });
+}
+
+export async function loginWithPassword(payload) {
+  return request(`${API_BASE}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    timeoutMs: 15000,
+  });
+}
+
+export async function signupWithPassword(payload) {
+  return request(`${API_BASE}/auth/signup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    timeoutMs: 15000,
+  });
+}
+
+export async function fetchAuthMe() {
+  return request(`${API_BASE}/auth/me`, {
+    timeoutMs: 12000,
+  });
+}
+
+export async function bootstrapTestAccount() {
+  return request(`${API_BASE}/auth/bootstrap-test-user`, {
+    method: "POST",
+    timeoutMs: 20000,
+  });
+}
+
+export async function fetchTestingAccount() {
+  return request(`${API_BASE}/auth/testing-account`, {
+    timeoutMs: 12000,
   });
 }

@@ -14,7 +14,10 @@ class Settings(BaseSettings):
     supabase_url: str = Field(default="", alias="SUPABASE_URL")
     supabase_anon_key: str = Field(default="", alias="SUPABASE_ANON_KEY")
     supabase_service_role_key: str = Field(default="", alias="SUPABASE_SERVICE_ROLE_KEY")
-    supabase_query_timeout_seconds: float = Field(default=2.8, alias="SUPABASE_QUERY_TIMEOUT_SECONDS")
+    auth_timeout_seconds: float = Field(default=10.0, alias="AUTH_TIMEOUT_SECONDS")
+    test_login_email: str = Field(default="atlas.test@demo.local", alias="TEST_LOGIN_EMAIL")
+    test_login_password: str = Field(default="AtlasDemo123!", alias="TEST_LOGIN_PASSWORD")
+    test_login_display_name: str = Field(default="Atlas Test User", alias="TEST_LOGIN_DISPLAY_NAME")
 
     auth_required: bool = Field(default=False, alias="AUTH_REQUIRED")
     auth_jwks_cache_ttl_seconds: int = Field(default=300, alias="AUTH_JWKS_CACHE_TTL_SECONDS")
@@ -69,7 +72,6 @@ class Settings(BaseSettings):
 
     theme_news_live_enabled: bool = Field(default=True, alias="THEME_NEWS_LIVE_ENABLED")
     theme_news_window_hours: int = Field(default=72, alias="THEME_NEWS_WINDOW_HOURS")
-    theme_live_cache_seconds: float = Field(default=18.0, alias="THEME_LIVE_CACHE_SECONDS")
     theme_news_rss_timeout_seconds: float = Field(default=6.0, alias="THEME_NEWS_RSS_TIMEOUT_SECONDS")
     theme_news_max_articles: int = Field(default=80, alias="THEME_NEWS_MAX_ARTICLES")
     mediastack_api_key: str = Field(default="", alias="MEDIASTACK_API_KEY")
