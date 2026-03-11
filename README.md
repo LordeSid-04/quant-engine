@@ -44,22 +44,23 @@ diff --git a/c:\Users\siddh\Downloads\Telegram Desktop\atlas-fintech-hackathon\a
 +### 3) Required environment values (`backend/.env`)
 +- `SUPABASE_URL`
 +- `SUPABASE_ANON_KEY`
-+- `SUPABASE_SERVICE_ROLE_KEY`
-+- `OPENAI_API_KEY` (optional but recommended for richer News Navigator responses)
-+
-+### 4) Auth mode toggle
-+- For full login/signup flow: `AUTH_REQUIRED=true`
-+- For quick local development without auth lock: `AUTH_REQUIRED=false`
-+
-+## Core Endpoints
-+- `POST /api/v1/auth/signup`
-+- `POST /api/v1/auth/login`
-+- `GET /api/v1/world-pulse/live`
-+- `POST /api/v1/scenario/run`
-+- `POST /api/v1/briefing/news-navigator`
-+- `GET /api/v1/memory/history`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `OPENAI_API_KEY` (optional but recommended for richer News Navigator responses)
+
+### 4) Auth mode toggle
+- For full login/signup flow: `AUTH_REQUIRED=true`
+- For quick local development without auth lock: `AUTH_REQUIRED=false`
+
+## Core Endpoints
+- `POST /api/v1/auth/signup`
+- `POST /api/v1/auth/login`
+- `GET /api/v1/world-pulse/live`
+- `POST /api/v1/scenario/run`
+ `POST /api/v1/briefing/news-navigator`
+ `GET /api/v1/memory/history`
 +
 +## Demo Focus
 +- Prototype demonstration
 +- Explanation of logic and market potential
 +- Traceable decision support, not black-box outputs
+
