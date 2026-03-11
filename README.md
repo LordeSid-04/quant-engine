@@ -4,8 +4,8 @@ Atlas is a macro-intelligence platform that helps users convert fast-moving glob
 
 ## Submission Deliverables
 - GitHub Repository: https://github.com/LordeSid-04/atlas-marco-economics-tracker
-- Video Pitch (max 5 mins): `ADD_YOUTUBE_LINK_HERE`
-  - Suggested title: `FinTech Innovators Hackathon 2026_(teamname)`
+- Video Pitch (max 5 mins): `[ADD_YOUTUBE_LINK_HERE](https://youtu.be/SN-sOanTEjY)`
+  - Suggested title: `FinTech Innovators Hackathon 2026_MNB`
 
 ## What the Solution Does
 - **World Pulse**: surfaces live macro developments with traceable source evidence.
@@ -51,6 +51,7 @@ GET /api/v1/world-pulse/live
 POST /api/v1/scenario/run
 POST /api/v1/briefing/news-navigator
 GET /api/v1/memory/history
+
 
 
 
