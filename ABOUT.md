@@ -1,6 +1,3 @@
-
-# ABOUT.md
-```md
 # About Atlas
 
 Atlas Macro Economics Tracker is a decision-support platform built for teams that need to interpret macro events quickly and confidently. The core problem we address is **analysis latency**: global macro signals arrive continuously, but converting them into coherent, explainable action is slow and inconsistent.
