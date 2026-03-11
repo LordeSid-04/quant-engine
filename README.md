@@ -10,7 +10,7 @@ Atlas is an explainable macro-intelligence platform that turns global events int
 ## ABOUT (Hackathon Requirement)
 - **Project Title:** Atlas Macro Economics Tracker
 - **Team Name:** MNB
-- **Project Description (<=200 words):**  
+- **Project Description:**  
   Atlas addresses analysis latency in macro-financial decision-making. Teams often receive fragmented news, delayed market interpretation, and non-repeatable reasoning when reacting to global events. Atlas solves this by unifying real-time macro developments, structured evidence trails, deterministic scenario stress testing, and memory continuity in a single platform. The World Pulse module surfaces high-signal developments with transparent data proof. News Navigator explains local and global impact from either selected headlines or user prompts. Scenario Lab simulates shocks through deterministic transmission pathways to support risk planning. Memory Vault stores prior analyses so users can continue from context instead of restarting. The result is faster, traceable, and more consistent macro intelligence for fintech, strategy, and investment workflows.
 
 ## Core Modules
@@ -69,6 +69,7 @@ Backend runs at `http://127.0.0.1:8000`.
 - **Trust:** source-linked evidence and deterministic methodology.
 - **Reusability:** persistent memory across sessions and themes.
 - **Practicality:** built for real workflow usage, not one-off demos.
+
 
 
 
