@@ -1,9 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import * as THREE from "three";
 
-const HELIX_STRAND_A = [0x7f91b8, 0x57e4ff, 0xbed2ff];
-const HELIX_STRAND_B = [0x9ba3ff, 0xc58dff, 0xf5ecff];
-const HELIX_RUNG = [0xbed2ff, 0xf5ecff, 0xc58dff];
+const SPHERE_PALETTE = [0x57e4ff, 0x78d4ff, 0x9ba3ff, 0xc58dff, 0xf0b6ff, 0xadf2ff];
 
 function clamp01(value) {
   if (value <= 0) return 0;
@@ -24,98 +22,65 @@ function samplePalette(palette, value) {
   return new THREE.Color(palette[leftIndex]).lerp(new THREE.Color(palette[rightIndex]), localT);
 }
 
-function pushCluster(samples, point, palette, clusterCount, spread, sizeRange, alpha, kind, progress) {
-  for (let index = 0; index < clusterCount; index += 1) {
-    const color = samplePalette(palette, clamp01(progress + (Math.random() - 0.5) * 0.16));
-    const jitter = new THREE.Vector3(
-      (Math.random() - 0.5) * spread,
-      (Math.random() - 0.5) * spread,
-      (Math.random() - 0.5) * spread,
-    );
-
-    samples.push({
-      position: point.clone().add(jitter),
-      color,
-      scale: sizeRange[0] + Math.random() * (sizeRange[1] - sizeRange[0]),
-      alpha: alpha * (0.86 + Math.random() * 0.18),
-      kind,
-      seed: Math.random(),
-    });
-  }
-}
-
-function createHelixSamples(isMobile) {
-  const strandSteps = isMobile ? 118 : 164;
-  const turns = isMobile ? 4.4 : 5.2;
-  const radius = isMobile ? 1.08 : 1.34;
-  const depthRadius = radius * 0.78;
-  const verticalSpan = isMobile ? 6.7 : 8.8;
-  const clusterCount = isMobile ? 4 : 6;
-  const rungParticleCount = isMobile ? 6 : 8;
-  const rungEvery = 2;
+function createSphereSamples(isMobile) {
+  const particleCount = isMobile ? 2600 : 3800;
+  const baseRadius = isMobile ? 1.86 : 2.18;
+  const shellSpread = isMobile ? 0.1 : 0.14;
   const samples = [];
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
 
-  for (let step = 0; step < strandSteps; step += 1) {
-    const progress = step / Math.max(1, strandSteps - 1);
-    const angle = progress * turns * Math.PI * 2;
-    const y = (progress - 0.5) * verticalSpan;
-    const radiusPulse = 1 + Math.sin(progress * Math.PI * 6) * 0.045;
-
-    const strandA = new THREE.Vector3(
-      Math.cos(angle) * radius * radiusPulse,
-      y,
-      Math.sin(angle) * depthRadius,
-    );
-    const strandB = new THREE.Vector3(
-      Math.cos(angle + Math.PI) * radius * (1 - (radiusPulse - 1) * 0.35),
-      y,
-      Math.sin(angle + Math.PI) * depthRadius,
+  for (let index = 0; index < particleCount; index += 1) {
+    const progress = (index + 0.5) / particleCount;
+    const phi = Math.acos(1 - (2 * progress));
+    const theta = goldenAngle * index;
+    const normal = new THREE.Vector3(
+      Math.cos(theta) * Math.sin(phi),
+      Math.cos(phi),
+      Math.sin(theta) * Math.sin(phi),
     );
 
-    samples.push({
-      position: strandA.clone(),
-      color: samplePalette(HELIX_STRAND_A, progress),
-      scale: isMobile ? 1.85 : 2.15,
-      alpha: 0.98,
-      kind: 1.15,
-      seed: Math.random(),
-    });
-    samples.push({
-      position: strandB.clone(),
-      color: samplePalette(HELIX_STRAND_B, progress),
-      scale: isMobile ? 1.85 : 2.15,
-      alpha: 0.98,
-      kind: 1.15,
-      seed: Math.random(),
-    });
-
-    pushCluster(samples, strandA, HELIX_STRAND_A, clusterCount, isMobile ? 0.125 : 0.155, [0.95, 1.85], 0.88, 1, progress);
-    pushCluster(samples, strandB, HELIX_STRAND_B, clusterCount, isMobile ? 0.125 : 0.155, [0.95, 1.85], 0.88, 1, progress);
-
-    if (step % rungEvery === 0) {
-      for (let rungIndex = 0; rungIndex < rungParticleCount; rungIndex += 1) {
-        const rungT = rungParticleCount === 1 ? 0.5 : rungIndex / Math.max(1, rungParticleCount - 1);
-        const point = strandA
-          .clone()
-          .lerp(strandB, rungT)
-          .add(
-            new THREE.Vector3(
-              (Math.random() - 0.5) * (isMobile ? 0.05 : 0.07),
-              (Math.random() - 0.5) * (isMobile ? 0.04 : 0.05),
-              (Math.random() - 0.5) * (isMobile ? 0.04 : 0.06),
-            ),
-          );
-
-        samples.push({
-          position: point,
-          color: samplePalette(HELIX_RUNG, (progress * 0.45) + (rungT * 0.55)),
-          scale: (isMobile ? 0.85 : 1.02) + Math.random() * 0.58,
-          alpha: 0.82 + Math.random() * 0.1,
-          kind: 0.76,
-          seed: Math.random(),
-        });
-      }
+    const tangent = new THREE.Vector3(-normal.z, 0, normal.x);
+    if (tangent.lengthSq() < 0.0001) {
+      tangent.set(1, 0, 0);
     }
+    tangent.normalize();
+
+    const bitangent = new THREE.Vector3().crossVectors(normal, tangent).normalize();
+
+    const ridge = Math.sin(theta * 2.55 + phi * 1.7);
+    const seam = Math.cos(theta * 4.9 - phi * 3.35);
+    const noise = Math.sin((normal.x - normal.z) * 5.5) * Math.cos((normal.y + normal.z) * 4.4);
+    const disruption = (ridge * 0.09) + (seam * 0.065) + (noise * 0.075);
+    const haloLift = Math.random() > 0.81 ? (0.07 + Math.random() * 0.22) : 0;
+    const interiorDepth = Math.random() > 0.88 ? (0.76 + Math.random() * 0.14) : 1;
+    const radius = baseRadius * (1 + disruption + haloLift);
+
+    const position = normal
+      .clone()
+      .multiplyScalar(radius * interiorDepth)
+      .add(tangent.clone().multiplyScalar((Math.random() - 0.5) * shellSpread))
+      .add(bitangent.clone().multiplyScalar((Math.random() - 0.5) * shellSpread));
+
+    const colorMix = clamp01(
+      ((normal.y + 1) * 0.32)
+      + (((Math.sin(theta * 1.4) + 1) * 0.5) * 0.28)
+      + (Math.abs(disruption) * 0.52)
+      + (haloLift * 1.1)
+      + (Math.random() * 0.08),
+    );
+    const color = samplePalette(SPHERE_PALETTE, colorMix);
+    const band = clamp01((Math.abs(disruption) * 2.4) + (haloLift * 2.8) + ((1 - interiorDepth) * 1.2));
+
+    samples.push({
+      position,
+      normal,
+      color,
+      scale: (haloLift > 0 ? 1.15 : 0.88) + Math.random() * (haloLift > 0 ? 1.05 : 0.72),
+      alpha: (haloLift > 0 ? 0.8 : 0.62) + Math.random() * 0.18,
+      phase: Math.random() * Math.PI * 2,
+      band,
+      drift: (Math.random() * 2) - 1,
+    });
   }
 
   return samples;
@@ -132,10 +97,10 @@ export default function DnaParticleBackdrop() {
     const isMobile = window.innerWidth < 768;
 
     const scene = new THREE.Scene();
-    scene.fog = new THREE.Fog(0x04060b, 8.5, 24);
+    scene.fog = new THREE.Fog(0x03050a, 7.5, 18);
 
-    const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 48);
-    camera.position.set(0, isMobile ? 0.05 : 0.14, isMobile ? 9.6 : 11);
+    const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 42);
+    camera.position.set(0, isMobile ? 0.04 : 0.08, isMobile ? 8.7 : 9.8);
 
     let renderer;
     try {
@@ -153,19 +118,22 @@ export default function DnaParticleBackdrop() {
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     host.appendChild(renderer.domElement);
 
-    const helixGroup = new THREE.Group();
-    helixGroup.position.set(isMobile ? 0.1 : 2.35, isMobile ? -0.18 : 0.02, 0);
-    scene.add(helixGroup);
+    const sphereGroup = new THREE.Group();
+    sphereGroup.rotation.x = isMobile ? 0.18 : 0.14;
+    sphereGroup.rotation.y = isMobile ? 0.3 : 0.42;
+    scene.add(sphereGroup);
 
-    const samples = createHelixSamples(isMobile);
+    const samples = createSphereSamples(isMobile);
     const sampleCount = samples.length;
 
     const positions = new Float32Array(sampleCount * 3);
+    const normals = new Float32Array(sampleCount * 3);
     const colors = new Float32Array(sampleCount * 3);
     const scales = new Float32Array(sampleCount);
     const alphas = new Float32Array(sampleCount);
-    const seeds = new Float32Array(sampleCount);
-    const kinds = new Float32Array(sampleCount);
+    const phases = new Float32Array(sampleCount);
+    const bands = new Float32Array(sampleCount);
+    const drifts = new Float32Array(sampleCount);
 
     for (let index = 0; index < sampleCount; index += 1) {
       const sample = samples[index];
@@ -175,29 +143,36 @@ export default function DnaParticleBackdrop() {
       positions[offset + 1] = sample.position.y;
       positions[offset + 2] = sample.position.z;
 
+      normals[offset] = sample.normal.x;
+      normals[offset + 1] = sample.normal.y;
+      normals[offset + 2] = sample.normal.z;
+
       colors[offset] = sample.color.r;
       colors[offset + 1] = sample.color.g;
       colors[offset + 2] = sample.color.b;
 
       scales[index] = sample.scale;
       alphas[index] = sample.alpha;
-      seeds[index] = sample.seed;
-      kinds[index] = sample.kind;
+      phases[index] = sample.phase;
+      bands[index] = sample.band;
+      drifts[index] = sample.drift;
     }
 
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute("aNormal", new THREE.BufferAttribute(normals, 3));
     geometry.setAttribute("aColor", new THREE.BufferAttribute(colors, 3));
     geometry.setAttribute("aScale", new THREE.BufferAttribute(scales, 1));
     geometry.setAttribute("aAlpha", new THREE.BufferAttribute(alphas, 1));
-    geometry.setAttribute("aSeed", new THREE.BufferAttribute(seeds, 1));
-    geometry.setAttribute("aKind", new THREE.BufferAttribute(kinds, 1));
+    geometry.setAttribute("aPhase", new THREE.BufferAttribute(phases, 1));
+    geometry.setAttribute("aBand", new THREE.BufferAttribute(bands, 1));
+    geometry.setAttribute("aDrift", new THREE.BufferAttribute(drifts, 1));
 
     const uniforms = {
       uTime: { value: 0 },
       uPointer: { value: new THREE.Vector2(0, 0) },
       uInteraction: { value: 0 },
-      uPointSize: { value: isMobile ? 6.6 : 7.3 },
+      uPointSize: { value: isMobile ? 6.7 : 7.5 },
     };
 
     const material = new THREE.ShaderMaterial({
@@ -210,35 +185,51 @@ export default function DnaParticleBackdrop() {
         uniform vec2 uPointer;
         uniform float uInteraction;
         uniform float uPointSize;
+        attribute vec3 aNormal;
         attribute vec3 aColor;
         attribute float aScale;
         attribute float aAlpha;
-        attribute float aSeed;
-        attribute float aKind;
+        attribute float aPhase;
+        attribute float aBand;
+        attribute float aDrift;
         varying vec3 vColor;
         varying float vAlpha;
 
-        void main() {
-          vec3 transformed = position;
-          float seed = aSeed * 6.28318530718;
-          float sway = sin((uTime * 1.12) + transformed.y * 1.08 + seed) * (0.035 + aKind * 0.012);
-          float pulse = cos((uTime * 1.85) + transformed.y * 0.82 + seed * 1.3) * (0.022 + aKind * 0.014);
-          float spiral = sin((uTime * 0.88) + transformed.y * 0.48 + seed * 0.7);
+        float heartbeat(float time, float phase) {
+          float cycle = fract((time * 0.42) + (phase * 0.025));
+          float primary = 1.0 - smoothstep(0.0, 0.11, abs(cycle - 0.08));
+          float secondary = 1.0 - smoothstep(0.0, 0.08, abs(cycle - 0.2));
+          return primary + (secondary * 0.68);
+        }
 
-          transformed.x += spiral * (0.045 + aKind * 0.017) * (1.0 + uInteraction * 0.6);
-          transformed.z += sway * (1.0 + uInteraction * 0.4);
-          transformed += normalize(position + vec3(0.0001)) * pulse;
-          transformed.x += uPointer.x * (0.18 + aKind * 0.045);
-          transformed.y += uPointer.y * (0.12 + aKind * 0.03);
+        void main() {
+          vec3 normal = normalize(aNormal + vec3(0.0001));
+          vec3 tangent = normalize(vec3(-normal.z, 0.0, normal.x) + vec3(0.0001, 0.0001, 0.0001));
+          vec3 bitangent = normalize(cross(normal, tangent));
+          float beat = heartbeat(uTime, aPhase);
+          float breath = (sin((uTime * 0.86) + aPhase) * 0.5) + 0.5;
+          float ripple = sin((uTime * (1.28 + aBand * 0.9)) + (aPhase * 1.7) + dot(position, vec3(1.2, 0.85, 1.05)) * 2.4);
+          float swirl = cos((uTime * 0.94) + (aPhase * 0.82) + dot(normal, vec3(2.2, 1.8, 1.4)));
+          float pulse = (beat * 0.23) + (breath * 0.04);
+
+          vec3 transformed = position;
+          transformed += normal * pulse * (0.38 + aBand * 0.28);
+          transformed += tangent * ripple * (0.06 + aBand * 0.035) * (1.0 + uInteraction * 0.35);
+          transformed += bitangent * swirl * (0.045 + aBand * 0.028);
+          transformed += normal * sin((uTime * 1.72) + (aPhase * 1.35) + aDrift * 3.4) * (0.05 + aBand * 0.03);
+
+          transformed.x += uPointer.x * (0.28 + aBand * 0.08);
+          transformed.y += uPointer.y * (0.22 + aBand * 0.07);
+          transformed.z += ((uPointer.x * normal.x) + (uPointer.y * normal.y)) * (0.16 + aBand * 0.05);
 
           vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
           gl_Position = projectionMatrix * mvPosition;
 
-          float depthScale = 300.0 / max(60.0, -mvPosition.z * 72.0);
-          gl_PointSize = uPointSize * aScale * depthScale * (1.0 + uInteraction * 0.12);
+          float depthScale = 320.0 / max(72.0, -mvPosition.z * 76.0);
+          gl_PointSize = uPointSize * aScale * depthScale * (1.0 + beat * 0.14 + uInteraction * 0.08);
 
-          vColor = aColor * (1.04 + pulse * 2.4 + uInteraction * 0.08);
-          vAlpha = aAlpha * (0.82 + uInteraction * 0.26);
+          vColor = aColor * (1.02 + beat * 0.42 + breath * 0.08 + uInteraction * 0.08);
+          vAlpha = aAlpha * (0.76 + beat * 0.32 + uInteraction * 0.12);
         }
       `,
       fragmentShader: `
@@ -248,65 +239,68 @@ export default function DnaParticleBackdrop() {
         void main() {
           vec2 uv = gl_PointCoord - vec2(0.5);
           float dist = length(uv);
-          float core = smoothstep(0.55, 0.0, dist);
-          float inner = smoothstep(0.3, 0.0, dist);
-          float halo = smoothstep(0.5, 0.12, dist) * 0.52;
+          float core = 1.0 - smoothstep(0.0, 0.52, dist);
+          float inner = 1.0 - smoothstep(0.0, 0.28, dist);
+          float halo = (1.0 - smoothstep(0.12, 0.5, dist)) * 0.5;
+          float alpha = (core * 0.8 + inner * 0.94 + halo * 0.44) * vAlpha;
 
-          float alpha = (core * 0.78 + inner * 0.92 + halo * 0.42) * vAlpha;
           if (alpha < 0.02) discard;
 
-          vec3 finalColor = vColor * (1.04 + inner * 0.36 + halo * 0.12);
+          vec3 finalColor = vColor * (1.03 + inner * 0.34 + halo * 0.14);
           gl_FragColor = vec4(finalColor, alpha);
         }
       `,
     });
 
     const points = new THREE.Points(geometry, material);
-    helixGroup.add(points);
+    sphereGroup.add(points);
 
-    const dustCount = isMobile ? 220 : 360;
-    const dustPositions = new Float32Array(dustCount * 3);
-    const dustColors = new Float32Array(dustCount * 3);
-    const dustLow = new THREE.Color(0x7f91b8);
-    const dustHigh = new THREE.Color(0xc58dff);
+    const hazeCount = isMobile ? 180 : 260;
+    const hazePositions = new Float32Array(hazeCount * 3);
+    const hazeColors = new Float32Array(hazeCount * 3);
 
-    for (let index = 0; index < dustCount; index += 1) {
+    for (let index = 0; index < hazeCount; index += 1) {
       const offset = index * 3;
-      dustPositions[offset] = (Math.random() - 0.5) * (isMobile ? 12 : 18);
-      dustPositions[offset + 1] = (Math.random() - 0.5) * (isMobile ? 9 : 12);
-      dustPositions[offset + 2] = (Math.random() - 0.5) * (isMobile ? 8 : 12);
+      const angle = Math.random() * Math.PI * 2;
+      const radius = (isMobile ? 3.2 : 3.8) + Math.random() * (isMobile ? 1.1 : 1.5);
+      const height = (Math.random() - 0.5) * (isMobile ? 3.8 : 4.8);
+      const color = samplePalette(SPHERE_PALETTE, Math.random());
 
-      const color = dustLow.clone().lerp(dustHigh, Math.random());
-      dustColors[offset] = color.r;
-      dustColors[offset + 1] = color.g;
-      dustColors[offset + 2] = color.b;
+      hazePositions[offset] = Math.cos(angle) * radius;
+      hazePositions[offset + 1] = height;
+      hazePositions[offset + 2] = Math.sin(angle) * radius;
+      hazeColors[offset] = color.r;
+      hazeColors[offset + 1] = color.g;
+      hazeColors[offset + 2] = color.b;
     }
 
-    const dustGeometry = new THREE.BufferGeometry();
-    dustGeometry.setAttribute("position", new THREE.BufferAttribute(dustPositions, 3));
-    dustGeometry.setAttribute("color", new THREE.BufferAttribute(dustColors, 3));
+    const hazeGeometry = new THREE.BufferGeometry();
+    hazeGeometry.setAttribute("position", new THREE.BufferAttribute(hazePositions, 3));
+    hazeGeometry.setAttribute("color", new THREE.BufferAttribute(hazeColors, 3));
 
-    const dustMaterial = new THREE.PointsMaterial({
-      size: isMobile ? 0.03 : 0.035,
+    const hazeMaterial = new THREE.PointsMaterial({
+      size: isMobile ? 0.045 : 0.052,
       vertexColors: true,
       transparent: true,
-      opacity: 0.34,
+      opacity: 0.22,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
 
-    const dust = new THREE.Points(dustGeometry, dustMaterial);
-    dust.position.set(isMobile ? 0 : 1.2, -0.2, -2.8);
-    scene.add(dust);
+    const haze = new THREE.Points(hazeGeometry, hazeMaterial);
+    scene.add(haze);
 
     let width = 1;
     let height = 1;
-    let targetRotationX = isMobile ? 0.32 : 0.26;
-    let targetRotationY = isMobile ? 0.12 : 0.2;
-    let targetRotationZ = isMobile ? -0.64 : -0.72;
-    let targetGroupX = isMobile ? 0.08 : 2.35;
-    let targetGroupY = isMobile ? -0.18 : 0.02;
-    let interactionBoost = reducedMotion ? 0.18 : 0.36;
+    const baseRotationX = isMobile ? 0.18 : 0.14;
+    const baseRotationY = isMobile ? 0.3 : 0.42;
+    const baseRotationZ = isMobile ? -0.08 : -0.06;
+    let targetRotationX = baseRotationX;
+    let targetRotationY = baseRotationY;
+    let targetRotationZ = baseRotationZ;
+    let targetPointerX = 0;
+    let targetPointerY = 0;
+    let interactionBoost = reducedMotion ? 0.12 : 0.24;
     let activeInteraction = 0;
     let rafId = 0;
 
@@ -322,50 +316,57 @@ export default function DnaParticleBackdrop() {
       const pointerX = (event.clientX / Math.max(window.innerWidth, 1)) - 0.5;
       const pointerY = (event.clientY / Math.max(window.innerHeight, 1)) - 0.5;
 
-      uniforms.uPointer.value.set(pointerX * 0.6, pointerY * -0.45);
-      targetRotationY = 0.18 + pointerX * 0.95;
-      targetRotationX = (isMobile ? 0.32 : 0.26) + pointerY * 0.34;
-      targetRotationZ = (isMobile ? -0.64 : -0.72) - pointerX * 0.18;
-      targetGroupX = (isMobile ? 0.08 : 2.35) + pointerX * (isMobile ? 0.4 : 0.85);
-      targetGroupY = (isMobile ? -0.18 : 0.02) - pointerY * 0.55;
+      targetPointerX = pointerX * 0.72;
+      targetPointerY = pointerY * -0.56;
+      targetRotationY = baseRotationY + (pointerX * 0.92);
+      targetRotationX = baseRotationX + (pointerY * 0.34);
+      targetRotationZ = baseRotationZ - (pointerX * 0.12);
       interactionBoost = 1;
     };
 
     const onPointerLeave = () => {
-      uniforms.uPointer.value.set(0, 0);
-      targetRotationX = isMobile ? 0.32 : 0.26;
-      targetRotationY = isMobile ? 0.12 : 0.2;
-      targetRotationZ = isMobile ? -0.64 : -0.72;
-      targetGroupX = isMobile ? 0.08 : 2.35;
-      targetGroupY = isMobile ? -0.18 : 0.02;
-      interactionBoost = reducedMotion ? 0.14 : 0.28;
+      targetPointerX = 0;
+      targetPointerY = 0;
+      targetRotationX = baseRotationX;
+      targetRotationY = baseRotationY;
+      targetRotationZ = baseRotationZ;
+      interactionBoost = reducedMotion ? 0.1 : 0.18;
     };
 
     const clock = new THREE.Clock();
 
     const animate = () => {
       const elapsed = clock.getElapsedTime();
-      uniforms.uTime.value = elapsed;
+      const heartbeatCycle = elapsed * 0.42;
+      const phase = heartbeatCycle % 1;
+      const beatA = Math.max(0, 1 - Math.abs((phase - 0.08) / 0.06));
+      const beatB = Math.max(0, 1 - Math.abs((phase - 0.2) / 0.045));
+      const heartbeat = beatA + (beatB * 0.62);
 
-      interactionBoost += ((reducedMotion ? 0.08 : 0.22) - interactionBoost) * 0.045;
-      activeInteraction += (interactionBoost - activeInteraction) * 0.05;
+      uniforms.uTime.value = elapsed;
+      uniforms.uPointer.value.x += (targetPointerX - uniforms.uPointer.value.x) * 0.06;
+      uniforms.uPointer.value.y += (targetPointerY - uniforms.uPointer.value.y) * 0.06;
+
+      interactionBoost += (((reducedMotion ? 0.08 : 0.22)) - interactionBoost) * 0.035;
+      activeInteraction += ((Math.max(interactionBoost, reducedMotion ? 0.08 : 0.18)) - activeInteraction) * 0.05;
       uniforms.uInteraction.value = activeInteraction;
 
-      helixGroup.rotation.x += (targetRotationX - helixGroup.rotation.x) * 0.045;
-      helixGroup.rotation.y += (targetRotationY - helixGroup.rotation.y) * 0.045;
-      helixGroup.rotation.z += (targetRotationZ - helixGroup.rotation.z) * 0.04;
-      helixGroup.rotation.y += reducedMotion ? 0.00055 : 0.00135;
-      helixGroup.position.x += (targetGroupX - helixGroup.position.x) * 0.04;
-      helixGroup.position.y += (targetGroupY - helixGroup.position.y) * 0.04;
-      helixGroup.position.z = Math.sin(elapsed * 0.6) * 0.12;
+      sphereGroup.rotation.x += (targetRotationX - sphereGroup.rotation.x) * 0.05;
+      sphereGroup.rotation.y += (targetRotationY - sphereGroup.rotation.y) * 0.05;
+      sphereGroup.rotation.z += (targetRotationZ - sphereGroup.rotation.z) * 0.05;
+      sphereGroup.rotation.y += reducedMotion ? 0.0006 : 0.0012;
+      sphereGroup.position.y = Math.sin(elapsed * 0.52) * 0.06;
 
-      dust.rotation.y += reducedMotion ? 0.00018 : 0.00048;
-      dust.rotation.x = Math.sin(elapsed * 0.25) * 0.04;
-      dustMaterial.opacity = 0.26 + activeInteraction * 0.08;
+      const pulseScale = 1 + (heartbeat * 0.035) + (Math.sin(elapsed * 0.84) * 0.012);
+      sphereGroup.scale.setScalar(pulseScale);
 
-      camera.position.x += (((uniforms.uPointer.value.x * 0.38)) - camera.position.x) * 0.03;
-      camera.position.y += (((uniforms.uPointer.value.y * 0.24) + (isMobile ? 0.02 : 0.08)) - camera.position.y) * 0.03;
-      camera.lookAt(isMobile ? 0.15 : 0.9, -0.05, 0);
+      haze.rotation.y += reducedMotion ? 0.00024 : 0.00042;
+      haze.rotation.x = Math.sin(elapsed * 0.24) * 0.06;
+      hazeMaterial.opacity = 0.16 + (heartbeat * 0.05) + (activeInteraction * 0.05);
+
+      camera.position.x += (((uniforms.uPointer.value.x * 0.42)) - camera.position.x) * 0.028;
+      camera.position.y += ((((uniforms.uPointer.value.y * 0.2) + (isMobile ? 0.04 : 0.08))) - camera.position.y) * 0.03;
+      camera.lookAt(0, 0, 0);
 
       renderer.render(scene, camera);
       rafId = window.requestAnimationFrame(animate);
@@ -374,7 +375,9 @@ export default function DnaParticleBackdrop() {
     resize();
     window.addEventListener("resize", resize);
     window.addEventListener("pointermove", onPointerMove, { passive: true });
-    window.addEventListener("pointerleave", onPointerLeave, { passive: true });
+    window.addEventListener("pointerleave", onPointerLeave);
+    window.addEventListener("pointercancel", onPointerLeave);
+    window.addEventListener("blur", onPointerLeave);
     rafId = window.requestAnimationFrame(animate);
 
     return () => {
@@ -382,11 +385,13 @@ export default function DnaParticleBackdrop() {
       window.removeEventListener("resize", resize);
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerleave", onPointerLeave);
+      window.removeEventListener("pointercancel", onPointerLeave);
+      window.removeEventListener("blur", onPointerLeave);
 
       geometry.dispose();
       material.dispose();
-      dustGeometry.dispose();
-      dustMaterial.dispose();
+      hazeGeometry.dispose();
+      hazeMaterial.dispose();
       renderer.dispose();
 
       if (renderer.domElement.parentNode === host) {
@@ -398,9 +403,10 @@ export default function DnaParticleBackdrop() {
   return (
     <div className="pointer-events-none absolute inset-0 z-[2] overflow-hidden" aria-hidden="true">
       <div ref={hostRef} className="absolute inset-0" />
-      <div className="absolute inset-y-0 left-0 w-[68%] bg-[radial-gradient(72%_76%_at_26%_50%,rgba(2,4,10,0.82),rgba(2,4,10,0.36)_60%,transparent_86%)] sm:w-[54%]" />
-      <div className="absolute inset-0 bg-[radial-gradient(44%_52%_at_76%_42%,rgba(140,188,255,0.2),transparent_74%)]" />
-      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(4,5,10,0.18)_0%,rgba(4,5,10,0.42)_56%,rgba(4,5,10,0.68)_100%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(36%_36%_at_50%_50%,rgba(118,181,255,0.16),transparent_62%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(52%_52%_at_50%_52%,rgba(197,141,255,0.14),transparent_70%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(78%_68%_at_50%_52%,rgba(2,4,10,0.2),rgba(2,4,10,0.58)_70%,rgba(2,4,10,0.82)_100%)]" />
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(4,5,10,0.16)_0%,rgba(4,5,10,0.34)_48%,rgba(4,5,10,0.72)_100%)]" />
     </div>
   );
 }

@@ -56,8 +56,8 @@ export default function AuthScreen() {
         <AtlasParticleWordmark text="ATLAS" />
       </div>
 
-      <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-[12vh] sm:px-6">
-        <div className="w-full max-w-[420px]">
+      <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-[10vh] sm:px-6">
+        <div className="w-full max-w-[380px]">
           <AuthPanel
             mode={mode}
             setMode={setMode}
@@ -92,12 +92,12 @@ function AuthPanel({
 }) {
   return (
     <section className="w-full">
-      <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-1">
+      <div className="flex items-center gap-2 rounded-[20px] border border-white/10 bg-white/[0.04] p-1">
         <ModeButton active={mode === "login"} onClick={() => setMode("login")} icon={LogIn} label="Log In" />
         <ModeButton active={mode === "signup"} onClick={() => setMode("signup")} icon={UserPlus} label="Sign Up" />
       </div>
 
-      <div className="mt-4 rounded-[24px] border border-white/10 bg-white/[0.03] p-4 sm:p-5">
+      <div className="mt-3.5 rounded-[22px] border border-white/10 bg-white/[0.03] p-4 sm:p-[18px]">
         {mode === "login" ? (
           <form
             className="space-y-4"
@@ -124,7 +124,7 @@ function AuthPanel({
             />
             <Button
               type="submit"
-              className="mt-2 h-12 w-full rounded-2xl bg-zinc-50 text-[15px] font-semibold text-zinc-950 hover:bg-white"
+              className="mt-1.5 h-11 w-full rounded-[18px] bg-zinc-50 text-[15px] font-semibold text-zinc-950 hover:bg-white"
               disabled={busyAction !== ""}
             >
               {busyAction === "login" ? "Signing In..." : "Log In"}
@@ -165,7 +165,7 @@ function AuthPanel({
             />
             <Button
               type="submit"
-              className="mt-2 h-12 w-full rounded-2xl bg-zinc-50 text-[15px] font-semibold text-zinc-950 hover:bg-white"
+              className="mt-1.5 h-11 w-full rounded-[18px] bg-zinc-50 text-[15px] font-semibold text-zinc-950 hover:bg-white"
               disabled={busyAction !== ""}
             >
               {busyAction === "signup" ? "Creating Account..." : "Create Account"}
@@ -322,7 +322,7 @@ function ModeButton({ active, onClick, icon: Icon, label }) {
     <button
       type="button"
       onClick={onClick}
-      className={`flex flex-1 items-center justify-center gap-2 rounded-[16px] px-4 py-3 text-sm font-semibold transition ${
+      className={`flex flex-1 items-center justify-center gap-2 rounded-[15px] px-3.5 py-2.5 text-sm font-semibold transition ${
         active ? "bg-zinc-100 text-zinc-950" : "text-zinc-400 hover:text-zinc-200"
       }`}
     >
@@ -340,7 +340,7 @@ function StyledInput(props) {
   return (
     <Input
       {...props}
-      className="mt-2 h-12 rounded-2xl border-white/10 bg-black/35 px-4 text-base text-zinc-50 placeholder:text-zinc-500 focus-visible:ring-white/40"
+      className="mt-2 h-11 rounded-[18px] border-white/10 bg-black/35 px-4 text-base text-zinc-50 placeholder:text-zinc-500 focus-visible:ring-white/40"
     />
   );
 }
