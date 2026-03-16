@@ -2,15 +2,10 @@ import React, { startTransition, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  ArrowRight,
-  BookOpenText,
   CheckCircle2,
   Expand,
-  FlaskConical,
   Globe2,
   Minimize2,
-  ShieldAlert,
-  Sparkles,
   X,
 } from "lucide-react";
 import GlobeMap from "@/components/worldpulse/GlobeMap";
@@ -19,8 +14,8 @@ import CountryRelationPanel from "@/components/worldpulse/CountryRelationPanel";
 import WorldPulseHero from "@/components/worldpulse/WorldPulseHero";
 import NewsNavigatorPanel from "@/components/worldpulse/NewsNavigatorPanel";
 import KeywordHighlighter from "@/components/worldpulse/KeywordHighlighter";
-import { StatBadge } from "@/components/premium/SurfaceCard";
 import {
+  describeApiError,
   fetchBriefingFeedStatus,
   fetchCountryDataProof,
   fetchCountryRelation,
@@ -30,8 +25,8 @@ import {
   getCachedDailyBriefing,
   getCachedDevelopmentDetail,
 } from "@/api/atlasClient";
-
-const PANEL_CLASS = "rounded-2xl border border-white/10";
+import { useAtlasSectionNavigation } from "@/lib/sectionNavigation";
+const PANEL_CLASS = "rounded-[2rem] border border-white/10";
 
 function toNumeric(value, fallback = 0) {
   const parsed = Number(value);
@@ -318,7 +313,7 @@ function CountryIntelCard({ country, intelRows, healthySources, totalSources, co
               >
                 <div className="line-clamp-2 text-[11px] text-zinc-100">{item.title}</div>
                 <div className="mt-1 text-[10px] text-zinc-500">
-                  {item.source} | {item.developmentLabel || "Signal Desk"} |{" "}
+                  {item.source} | {item.developmentLabel || "World Pulse"} |{" "}
                   {new Date(item.published_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                 </div>
               </a>
@@ -357,6 +352,7 @@ function CountryIntelCard({ country, intelRows, healthySources, totalSources, co
 export default function WorldPulse({ embedded = false }) {
   const cachedDailyBrief = getCachedDailyBriefing();
   const cachedFeedStatus = getCachedBriefingFeedStatus();
+  const goToAtlasSection = useAtlasSectionNavigation();
 
   const [selectedDevelopmentId, setSelectedDevelopmentId] = useState("");
   const [selectedThemeId, setSelectedThemeId] = useState("");
@@ -370,7 +366,6 @@ export default function WorldPulse({ embedded = false }) {
   const [proofConsoleOpen, setProofConsoleOpen] = useState(false);
   const [navigatorHeadline, setNavigatorHeadline] = useState(null);
   const [navigatorHighlights, setNavigatorHighlights] = useState([]);
-  const [activeRiskPlaybookId, setActiveRiskPlaybookId] = useState("");
 
   const { data, isLoading, isError, error, isFetching } = useQuery({
     queryKey: ["briefing-daily"],
@@ -664,10 +659,6 @@ export default function WorldPulse({ embedded = false }) {
     setMapEndCountry(null);
   };
 
-  const scenarioTarget = selectedDevelopment?.development_id
-    ? `/?development_id=${encodeURIComponent(selectedDevelopment.development_id)}#scenario-lab`
-    : "/#scenario-lab";
-
   const handleThemeSelectionFromNavigator = (themeId, headline, analysis) => {
     if (headline) {
       setNavigatorHeadline(headline);
@@ -753,30 +744,35 @@ export default function WorldPulse({ embedded = false }) {
     }));
   }, [selectedDevelopment]);
 
+  const decisionGuideItems = useMemo(() => {
+    const rows = [...whatThisMeansItems, ...riskPlaybookItems];
+    return rows.slice(0, 5).map((item, index) => ({
+      ...item,
+      kicker: index === 0 ? "Start here" : index === 1 ? "Then watch" : "Also consider",
+    }));
+  }, [riskPlaybookItems, whatThisMeansItems]);
+
   useEffect(() => {
-    if (!riskPlaybookItems.length) {
-      setActiveRiskPlaybookId("");
-      return;
-    }
-    if (activeRiskPlaybookId && riskPlaybookItems.some((item) => item.id === activeRiskPlaybookId)) {
-      return;
-    }
-    setActiveRiskPlaybookId(riskPlaybookItems[0].id);
-  }, [activeRiskPlaybookId, riskPlaybookItems]);
+    if (typeof document === "undefined") return undefined;
+    document.body.classList.toggle("map-fullscreen-active", mapFullscreenOpen);
+    return () => {
+      document.body.classList.remove("map-fullscreen-active");
+    };
+  }, [mapFullscreenOpen]);
 
   const mapInstructionText = mapSelectionMode
     ? `Selecting ${mapSelectionMode} country: click a map pin`
     : "Rotate, zoom, and click red country markers to inspect spillovers.";
 
   const renderInlineRelationPicker = () => (
-    <div className="flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.1em]">
+    <div className="flex flex-wrap items-center gap-3 text-[12px] uppercase tracking-[0.11em]">
       <button
         type="button"
         onClick={() => setMapSelectionMode("start")}
-        className={`atlas-focus-ring rounded-full border px-2.5 py-1 transition ${
+        className={`atlas-focus-ring rounded-full border px-3.5 py-2 font-medium transition ${
           mapSelectionMode === "start"
-            ? "border-white/40 bg-white/[0.11] text-zinc-100"
-            : "border-white/20 bg-white/[0.05] text-zinc-300 hover:border-white/30 hover:text-zinc-100"
+            ? "border-white/45 bg-white/[0.13] text-zinc-50"
+            : "border-white/20 bg-white/[0.05] text-zinc-200 hover:border-white/30 hover:text-zinc-50"
         }`}
       >
         {mapSelectionMode === "start" ? "Pick Start..." : "Set Start"}
@@ -784,21 +780,21 @@ export default function WorldPulse({ embedded = false }) {
       <button
         type="button"
         onClick={() => setMapSelectionMode("end")}
-        className={`atlas-focus-ring rounded-full border px-2.5 py-1 transition ${
+        className={`atlas-focus-ring rounded-full border px-3.5 py-2 font-medium transition ${
           mapSelectionMode === "end"
-            ? "border-white/40 bg-white/[0.11] text-zinc-100"
-            : "border-white/20 bg-white/[0.05] text-zinc-300 hover:border-white/30 hover:text-zinc-100"
+            ? "border-white/45 bg-white/[0.13] text-zinc-50"
+            : "border-white/20 bg-white/[0.05] text-zinc-200 hover:border-white/30 hover:text-zinc-50"
         }`}
       >
         {mapSelectionMode === "end" ? "Pick End..." : "Set End"}
       </button>
-      <div className="text-zinc-500">{mapStartCountry?.name ? `Start: ${mapStartCountry.name}` : "Start: --"}</div>
-      <div className="text-zinc-500">{mapEndCountry?.name ? `End: ${mapEndCountry.name}` : "End: --"}</div>
+      <div className="font-medium text-zinc-200">{mapStartCountry?.name ? `Start: ${mapStartCountry.name}` : "Start: --"}</div>
+      <div className="font-medium text-zinc-200">{mapEndCountry?.name ? `End: ${mapEndCountry.name}` : "End: --"}</div>
       {(mapStartCountry || mapEndCountry) ? (
         <button
           type="button"
           onClick={clearMapSelection}
-          className="atlas-focus-ring rounded-full border border-white/15 px-2.5 py-1 text-zinc-400 transition hover:border-white/28 hover:text-zinc-100"
+          className="atlas-focus-ring rounded-full border border-white/15 px-3.5 py-2 font-medium text-zinc-200 transition hover:border-white/28 hover:text-zinc-50"
         >
           Clear
         </button>
@@ -807,30 +803,30 @@ export default function WorldPulse({ embedded = false }) {
   );
 
   const renderFullscreenRelationPicker = () => (
-    <div className="absolute left-4 top-[78px] z-[1300] w-[min(680px,calc(100%-2rem))] rounded-2xl border border-cyan-300/20 bg-black/62 p-3 shadow-[0_18px_42px_rgba(0,0,0,0.52)] backdrop-blur-xl">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="absolute left-4 top-[190px] z-[1300] w-[min(360px,calc(100%-2rem))] rounded-2xl border border-cyan-300/20 bg-black/62 p-4 shadow-[0_18px_42px_rgba(0,0,0,0.52)] backdrop-blur-xl">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="text-[11px] font-semibold uppercase tracking-[0.15em] text-cyan-100/90">Route Builder</div>
-          <div className="mt-1 text-[11px] text-zinc-400">Set start/end directly or pick pins on the globe.</div>
+          <div className="text-[13px] font-semibold uppercase tracking-[0.15em] text-cyan-100/90">Route Builder</div>
+          <div className="mt-1 text-[13px] leading-relaxed text-zinc-300">Set start/end directly or pick pins on the globe.</div>
         </div>
         {(mapStartCountry || mapEndCountry) ? (
           <button
             type="button"
             onClick={clearMapSelection}
-            className="atlas-focus-ring rounded-full border border-white/20 px-3 py-1 text-[10px] uppercase tracking-[0.1em] text-zinc-300 transition hover:border-white/30 hover:text-zinc-100"
+            className="atlas-focus-ring rounded-full border border-white/20 px-3.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.1em] text-zinc-200 transition hover:border-white/30 hover:text-zinc-100"
           >
             Clear Route
           </button>
         ) : null}
       </div>
 
-      <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+      <div className="mt-4 grid grid-cols-1 gap-3">
         <label className="space-y-1">
-          <div className="text-[10px] uppercase tracking-[0.11em] text-zinc-500">Start Country</div>
+          <div className="text-[11px] font-medium uppercase tracking-[0.11em] text-zinc-300">Start Country</div>
           <select
             value={mapStartCountry?.id || ""}
             onChange={(event) => setMapStartById(event.target.value)}
-            className="atlas-focus-ring w-full rounded-lg border border-white/18 bg-black/40 px-2.5 py-2 text-sm text-zinc-100 outline-none transition hover:border-white/28"
+            className="atlas-focus-ring w-full rounded-xl border border-white/18 bg-black/40 px-3.5 py-3 text-[14px] text-zinc-100 outline-none transition hover:border-white/28"
           >
             <option value="">Select start country</option>
             {spilloverHotspotOptions.map((spot) => (
@@ -842,11 +838,11 @@ export default function WorldPulse({ embedded = false }) {
         </label>
 
         <label className="space-y-1">
-          <div className="text-[10px] uppercase tracking-[0.11em] text-zinc-500">End Country</div>
+          <div className="text-[11px] font-medium uppercase tracking-[0.11em] text-zinc-300">End Country</div>
           <select
             value={mapEndCountry?.id || ""}
             onChange={(event) => setMapEndById(event.target.value)}
-            className="atlas-focus-ring w-full rounded-lg border border-white/18 bg-black/40 px-2.5 py-2 text-sm text-zinc-100 outline-none transition hover:border-white/28"
+            className="atlas-focus-ring w-full rounded-xl border border-white/18 bg-black/40 px-3.5 py-3 text-[14px] text-zinc-100 outline-none transition hover:border-white/28"
           >
             <option value="">Select end country</option>
             {spilloverHotspotOptions.map((spot) => (
@@ -858,11 +854,11 @@ export default function WorldPulse({ embedded = false }) {
         </label>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.1em]">
+      <div className="mt-4 flex flex-wrap items-center gap-2.5 text-[11px] uppercase tracking-[0.1em]">
         <button
           type="button"
           onClick={() => setMapSelectionMode("start")}
-          className={`atlas-focus-ring rounded-full border px-2.5 py-1 transition ${
+          className={`atlas-focus-ring rounded-full border px-3 py-1.5 font-medium transition ${
             mapSelectionMode === "start"
               ? "border-white/40 bg-white/[0.12] text-zinc-100"
               : "border-white/18 bg-white/[0.04] text-zinc-300 hover:border-white/30 hover:text-zinc-100"
@@ -873,7 +869,7 @@ export default function WorldPulse({ embedded = false }) {
         <button
           type="button"
           onClick={() => setMapSelectionMode("end")}
-          className={`atlas-focus-ring rounded-full border px-2.5 py-1 transition ${
+          className={`atlas-focus-ring rounded-full border px-3 py-1.5 font-medium transition ${
             mapSelectionMode === "end"
               ? "border-white/40 bg-white/[0.12] text-zinc-100"
               : "border-white/18 bg-white/[0.04] text-zinc-300 hover:border-white/30 hover:text-zinc-100"
@@ -882,7 +878,7 @@ export default function WorldPulse({ embedded = false }) {
           {mapSelectionMode === "end" ? "Picking End..." : "Pick End On Globe"}
         </button>
         {relationData ? (
-          <span className="rounded-full border border-cyan-300/35 bg-cyan-300/12 px-2.5 py-1 text-cyan-100">
+          <span className="rounded-full border border-cyan-300/35 bg-cyan-300/12 px-3 py-1.5 font-medium text-cyan-100">
             Quality {String(relationData.relation_quality_label || "mixed")} {relationData.relation_quality_score}/100
           </span>
         ) : null}
@@ -892,19 +888,23 @@ export default function WorldPulse({ embedded = false }) {
 
   const heroSpilloverPanel = (
     <div className="space-y-3">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-400">Cross-Region Spillover Globe</div>
-          <div className="text-[10px] text-zinc-500">Blue oceans, green landmasses, red pins, and directed spillover paths.</div>
+      <div className="space-y-2.5">
+        <div className="whitespace-nowrap text-[15px] font-semibold uppercase tracking-[0.14em] text-zinc-100">
+          Cross-Region Spillover Globe
         </div>
-        <button
-          type="button"
-          onClick={() => setMapFullscreenOpen(true)}
-          className="atlas-focus-ring inline-flex items-center gap-1 rounded-full border border-white/20 bg-white/[0.04] px-3 py-1 text-[10px] uppercase tracking-[0.11em] text-zinc-200 transition hover:border-white/30 hover:bg-white/[0.08]"
-        >
-          <Expand className="h-3.5 w-3.5" />
-          Fullscreen
-        </button>
+        <div className="flex items-center justify-between gap-4">
+          <div className="text-[13px] leading-relaxed text-zinc-200">
+            Blue oceans, green landmasses, red pins, and directed spillover paths.
+          </div>
+          <button
+            type="button"
+            onClick={() => setMapFullscreenOpen(true)}
+            className="atlas-focus-ring inline-flex shrink-0 items-center gap-1.5 self-center rounded-full border border-white/20 bg-white/[0.04] px-4 py-2 text-[12px] font-medium uppercase tracking-[0.11em] text-zinc-50 transition hover:border-white/30 hover:bg-white/[0.08]"
+          >
+            <Expand className="h-3.5 w-3.5" />
+            Fullscreen
+          </button>
+        </div>
       </div>
       {renderInlineRelationPicker()}
 
@@ -945,16 +945,9 @@ export default function WorldPulse({ embedded = false }) {
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 className="text-xl font-semibold tracking-tight text-zinc-100 sm:text-2xl">Critical Developments</h2>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <StatBadge label="As Of" value={formatClock(data?.as_of)} />
-              <StatBadge label="Confidence" value={data?.confidence?.score ?? "--"} />
-              <StatBadge
-                label="Healthy Sources"
-                value={`${healthySources}/${totalSources || "--"}`}
-                tone={healthySources > 0 ? "text-emerald-200" : "text-amber-200"}
-              />
-              <StatBadge label="Status" value={isFetching ? "Refreshing" : "Live"} />
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-400">
+                Start with the live headline, then move straight into the one development Atlas believes matters most right now.
+              </p>
             </div>
           </div>
 
@@ -962,121 +955,114 @@ export default function WorldPulse({ embedded = false }) {
             borderless
             onHeadlineSelected={handleHeadlineSelectionFromNavigator}
             onThemeSelected={handleThemeSelectionFromNavigator}
+            overviewStats={{
+              asOf: formatClock(data?.as_of),
+              confidence: data?.confidence?.score ?? "--",
+              healthySources: `${healthySources}/${totalSources || "--"}`,
+              status: isFetching ? "Refreshing" : "Live",
+            }}
           />
 
           {selectedDevelopment ? (
-            <div className="space-y-4 rounded-xl bg-white/[0.03] p-3 sm:p-4">
+            <div className="space-y-4 rounded-[1.75rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] p-4 sm:p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="max-w-4xl">
-                  <div className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">Critical Developments</div>
+                <div className="max-w-4xl space-y-3">
+                  <div className="inline-flex w-fit items-center gap-2 rounded-full border border-white/14 bg-white/[0.04] px-3 py-1 text-[10px] uppercase tracking-[0.12em] text-zinc-400">
+                    Selected development
+                  </div>
                   <KeywordHighlighter
                     text={displayedHeadlineTitle}
                     highlights={navigatorHighlights}
                     tooltipLabel="Headline keyword"
-                    className="mt-1 text-2xl font-bold leading-tight text-zinc-100"
+                    className="text-2xl font-bold leading-tight text-zinc-100 sm:text-[2.2rem]"
                   />
                   <KeywordHighlighter
                     text={displayedNarrative}
                     highlights={navigatorHighlights}
                     tooltipLabel="Narrative keyword"
-                    className="mt-2 text-sm leading-relaxed text-zinc-300"
+                    className="text-sm leading-relaxed text-zinc-300 sm:text-[15px]"
                   />
+                  <div className="flex flex-wrap gap-2">
+                    <span className="rounded-full border border-white/14 bg-white/[0.04] px-3 py-1 text-[10px] uppercase tracking-[0.1em] text-zinc-300">
+                      {selectedDevelopment.label}
+                    </span>
+                    <span className="rounded-full border border-white/14 bg-white/[0.04] px-3 py-1 text-[10px] uppercase tracking-[0.1em] text-zinc-300">
+                      Importance {selectedDevelopment.importance}
+                    </span>
+                    <span className="rounded-full border border-white/14 bg-white/[0.04] px-3 py-1 text-[10px] uppercase tracking-[0.1em] text-zinc-300">
+                      {selectedDevelopment.state}
+                    </span>
+                  </div>
                   {isFetchingDevelopmentDetail ? <div className="mt-1 text-[10px] text-zinc-500">Refreshing detailed intelligence...</div> : null}
                 </div>
-                <a
-                  href={scenarioTarget}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-white/25 px-3 py-1.5 text-[11px] font-medium text-zinc-100 transition duration-300 hover:border-white/40 hover:tracking-[0.02em]"
+                <button
+                  type="button"
+                  onClick={() =>
+                    goToAtlasSection("scenario-lab", {
+                      search: selectedDevelopment?.development_id
+                        ? `?development_id=${encodeURIComponent(selectedDevelopment.development_id)}`
+                        : "",
+                    })
+                  }
+                  className="atlas-focus-ring inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/[0.04] px-4 py-2 text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-100 transition hover:border-white/40 hover:bg-white/[0.08]"
                 >
-                  <FlaskConical className="h-3.5 w-3.5" />
                   Run Scenario
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </a>
+                </button>
               </div>
 
               <DevelopmentStoryGraph graph={selectedDevelopment.story_graph} onSelectNode={setSelectedGraphNode} borderless />
 
-              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                <div className="rounded-xl bg-white/[0.02] p-3">
-                  <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-zinc-100">
-                    <BookOpenText className="h-4 w-4 text-zinc-300" />
-                    What This Means
+              <div className="rounded-[1.5rem] border border-white/10 bg-black/22 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">Decision guide</div>
+                    <div className="mt-1 text-sm text-zinc-300">
+                      One place for the clearest reading, what to watch next, and the action Atlas would take first.
+                    </div>
                   </div>
-                  <div className="text-[10px] uppercase tracking-[0.1em] text-zinc-500">Concise takeaways with practical next steps</div>
-
-                  <div className="mt-2 space-y-2">
-                    {whatThisMeansItems.length ? (
-                      whatThisMeansItems.map((item) => (
-                        <div key={item.id} className="rounded-lg border border-white/12 bg-white/[0.04] px-2.5 py-2">
-                          <div className="text-[11px] font-semibold text-zinc-100">{item.title}</div>
-                          <div className="mt-1 text-[11px] text-zinc-300">{item.insight}</div>
-                          <div className="mt-1 rounded-md border border-cyan-300/25 bg-cyan-300/10 px-2 py-1 text-[10px] text-cyan-100">
-                            Action: {item.action}
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="rounded-lg border border-white/10 bg-white/[0.02] px-2.5 py-2 text-[11px] text-zinc-400">
-                        Theme interpretation is loading.
-                      </div>
-                    )}
+                  <div className="rounded-full border border-white/14 bg-white/[0.04] px-3 py-1 text-[10px] uppercase tracking-[0.1em] text-zinc-400">
+                    Updated from live development
                   </div>
                 </div>
 
-                <div className="rounded-xl bg-white/[0.02] p-3">
-                  <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-zinc-100">
-                    <ShieldAlert className="h-4 w-4 text-zinc-300" />
-                    Risk Playbook
-                  </div>
-                  <div className="text-[10px] uppercase tracking-[0.1em] text-zinc-500">
-                    Interactive, probabilistic view of what can rise or cool next
+                <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+                  <div className="rounded-[1.35rem] border border-white/12 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.03))] p-4">
+                    <div className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">
+                      {decisionGuideItems[0]?.kicker || "Start here"}
+                    </div>
+                    <div className="mt-2 text-xl font-semibold text-zinc-100">
+                      {decisionGuideItems[0]?.title || "Waiting for the latest take"}
+                    </div>
+                    <div className="mt-3 text-[15px] leading-7 text-zinc-200">
+                      {decisionGuideItems[0]?.insight || "Atlas is syncing the most useful explanation for this development."}
+                    </div>
+                    {decisionGuideItems[0]?.action ? (
+                      <div className="mt-4 rounded-2xl border border-cyan-300/25 bg-cyan-300/10 px-4 py-3 text-[14px] leading-relaxed text-cyan-100">
+                        Next move: {decisionGuideItems[0].action}
+                      </div>
+                    ) : null}
                   </div>
 
-                  <div className="mt-2">
-                    <RiskPlaybookProbabilityGraph
-                      items={riskPlaybookItems}
-                      activeId={activeRiskPlaybookId}
-                      onSelect={setActiveRiskPlaybookId}
-                    />
-                  </div>
-
-                  <div className="mt-2 space-y-2">
-                    {riskPlaybookItems.length ? (
-                      riskPlaybookItems.map((item) => (
-                        <button
-                          type="button"
-                          key={item.id}
-                          onClick={() => setActiveRiskPlaybookId(item.id)}
-                          className={`atlas-focus-ring block w-full rounded-lg border bg-white/[0.04] px-2.5 py-2 text-left transition ${
-                            activeRiskPlaybookId === item.id
-                              ? "border-cyan-300/45 bg-cyan-300/10"
-                              : "border-white/12 hover:border-white/25"
-                          }`}
-                        >
+                  <div className="grid grid-cols-1 gap-3">
+                    {decisionGuideItems.slice(1).length ? (
+                      decisionGuideItems.slice(1).map((item) => (
+                        <div key={item.id} className="rounded-[1.15rem] border border-white/12 bg-white/[0.04] p-3.5">
                           <div className="flex items-center justify-between gap-2">
-                            <div className="text-[11px] font-semibold text-zinc-100">{item.title}</div>
+                            <div className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">{item.kicker}</div>
                             <span className={`rounded-full border px-2 py-0.5 text-[9px] uppercase tracking-[0.08em] ${playbookSeverityTone(item.severity)}`}>
                               {item.severity}
                             </span>
                           </div>
-                          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[9px] uppercase tracking-[0.08em] text-zinc-300">
-                            <span className="rounded-full border border-white/18 px-1.5 py-0.5">{item.direction}</span>
-                            <span className="rounded-full border border-white/18 px-1.5 py-0.5">
-                              Probability {Math.round(item.probability)}% ({probabilityBand(item.probability)})
-                            </span>
-                            <span className="rounded-full border border-white/18 px-1.5 py-0.5">
-                              Confidence {Math.round(item.confidence)}%
-                            </span>
+                          <div className="mt-2 text-sm font-semibold text-zinc-100">{item.title}</div>
+                          <div className="mt-2 text-[13px] leading-relaxed text-zinc-300">{item.insight}</div>
+                          <div className="mt-3 text-[12px] text-zinc-200">
+                            <span className="font-semibold text-zinc-100">Action:</span> {item.action}
                           </div>
-                          <div className="mt-1 text-[11px] text-zinc-300">{item.insight}</div>
-                          <div className="mt-1 flex items-start gap-1.5 text-[10px] text-zinc-200">
-                            <Sparkles className="mt-[1px] h-3.5 w-3.5 shrink-0 text-zinc-300" />
-                            <span>{item.action}</span>
-                          </div>
-                        </button>
+                        </div>
                       ))
                     ) : (
-                      <div className="rounded-lg border border-white/10 bg-white/[0.02] px-2.5 py-2 text-[11px] text-zinc-400">
-                        Risk actions are loading.
+                      <div className="rounded-[1.15rem] border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-zinc-500">
+                        Atlas is still building the rest of the guide.
                       </div>
                     )}
                   </div>
@@ -1087,8 +1073,8 @@ export default function WorldPulse({ embedded = false }) {
             <div className="text-sm text-zinc-500">Select a development to view analysis.</div>
           )}
         </section>
-        {isLoading ? <div className="text-xs text-zinc-500">Loading live signal desk...</div> : null}
-        {isError ? <div className="text-xs text-rose-300">Failed to load briefing: {error?.message || "Unknown error"}</div> : null}
+        {isLoading ? <div className="text-xs text-zinc-500">Loading World Pulse...</div> : null}
+        {isError ? <div className="text-xs text-rose-300">{describeApiError(error, "Could not load the live briefing.")}</div> : null}
       </div>
 
       <AnimatePresence>
@@ -1097,7 +1083,7 @@ export default function WorldPulse({ embedded = false }) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-x-0 bottom-0 top-[74px] z-[120] bg-black/92 p-2 backdrop-blur-sm sm:p-4"
+            className="fixed inset-0 z-[9999] bg-black/96 p-2 backdrop-blur-sm sm:p-4"
           >
             <motion.div
               initial={{ opacity: 0, scale: 0.98, y: 8 }}
@@ -1106,24 +1092,24 @@ export default function WorldPulse({ embedded = false }) {
               transition={{ duration: 0.2, ease: "easeOut" }}
               className="relative mx-auto h-full max-w-[1700px] overflow-hidden rounded-2xl border border-cyan-300/20 bg-black/70 shadow-[0_26px_72px_rgba(0,0,0,0.62)]"
             >
-              <div className="absolute inset-x-0 top-0 z-[1300] flex items-center justify-between border-b border-white/10 bg-black/56 px-4 py-3">
-                <div>
-                  <div className="text-sm font-semibold uppercase tracking-[0.12em] text-zinc-100">Cross-Region Spillover Globe</div>
-                  <div className="text-[11px] text-zinc-400">
+              <div className="absolute inset-x-0 top-0 z-[1300] flex items-start justify-between px-4 py-4">
+                <div className="rounded-2xl border border-white/12 bg-black/48 px-5 py-3 shadow-[0_18px_48px_rgba(0,0,0,0.42)] backdrop-blur-xl">
+                  <div className="text-[16px] font-semibold uppercase tracking-[0.12em] text-zinc-100">Cross-Region Spillover Globe</div>
+                  <div className="mt-1 text-[13px] text-zinc-300">
                     Elevated 3D markers and bilateral relation tracing for selected countries.
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setMapFullscreenOpen(false)}
-                  className="atlas-focus-ring inline-flex items-center gap-1 rounded-full border border-white/20 bg-white/[0.05] px-3 py-1 text-[10px] uppercase tracking-[0.11em] text-zinc-200 transition hover:bg-white/[0.12]"
+                  className="atlas-focus-ring inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-black/62 px-4 py-2 text-[12px] font-medium uppercase tracking-[0.11em] text-zinc-100 transition hover:bg-black/78"
                 >
-                  <Minimize2 className="h-3.5 w-3.5" />
+                  <Minimize2 className="h-4 w-4" />
                   Minimize & Return
                 </button>
               </div>
 
-              <div className="absolute inset-0 pt-[64px]">
+              <div className="absolute inset-0 pt-[108px]">
                 {renderFullscreenRelationPicker()}
                 <GlobeMap
                   mapKey="hero-spillover-fullscreen"
@@ -1161,15 +1147,6 @@ export default function WorldPulse({ embedded = false }) {
                     onClose={() => setFocusedCountry(null)}
                   />
                 ) : null}
-
-                <button
-                  type="button"
-                  onClick={() => setMapFullscreenOpen(false)}
-                  className="atlas-focus-ring absolute bottom-5 right-5 z-[1300] inline-flex items-center gap-1 rounded-full border border-white/20 bg-black/62 px-4 py-2 text-xs font-medium uppercase tracking-[0.1em] text-zinc-100 transition hover:bg-black/78"
-                >
-                  <Minimize2 className="h-4 w-4" />
-                  Return To Website
-                </button>
               </div>
             </motion.div>
           </motion.div>

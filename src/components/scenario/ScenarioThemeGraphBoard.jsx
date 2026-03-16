@@ -31,6 +31,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import {
+  describeApiError,
   fetchThemeLive,
   fetchThemeMemory,
   fetchThemeSources,
@@ -639,7 +640,7 @@ export default function ScenarioThemeGraphBoard({ scenarioResult, isScenarioRunn
   }, [riskRows]);
 
   const contentLoading = isLoadingTimeline || isLoadingSources || isLoadingMemory;
-  const syncIssue = liveError?.message || timelineError?.message || sourcesError?.message || memoryError?.message || "";
+  const syncIssue = describeApiError(liveError || timelineError || sourcesError || memoryError, "");
   const showSyncIssue = Boolean(syncIssue);
 
   return (
@@ -647,13 +648,13 @@ export default function ScenarioThemeGraphBoard({ scenarioResult, isScenarioRunn
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="atlas-chip">Interactive Risk Intelligence</div>
-          <h3 className="mt-2 text-lg font-semibold tracking-tight text-zinc-100 sm:text-xl">Scenario Theme Explorer</h3>
+          <h3 className="mt-2 text-lg font-semibold tracking-tight text-zinc-100 sm:text-xl">Theme Impact Board</h3>
           <p className="mt-1 text-xs text-zinc-400 sm:text-sm">
-            Follow theme momentum over time, understand transmission paths, and convert source evidence into actionable risk signals.
+            See which theme is heating up, how pressure is spreading, and what past discussions suggest could happen next.
           </p>
         </div>
         <div className="rounded-xl border border-white/14 bg-black/30 px-3 py-2 text-right">
-          <div className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Selected Theme</div>
+          <div className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">Focus Theme</div>
           <div className="text-sm font-semibold text-zinc-100">{selectedTheme?.label || "--"}</div>
           <div className="text-[11px] text-zinc-400">
             temp {selectedTheme?.temperature ?? "--"} | state {selectedTheme?.state || "--"}
@@ -666,7 +667,7 @@ export default function ScenarioThemeGraphBoard({ scenarioResult, isScenarioRunn
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2 text-xs uppercase tracking-[0.12em] text-zinc-300">
               <Flame className="h-3.5 w-3.5 text-amber-300" />
-              Theme Heat Evolution
+              Theme Temperature
             </div>
             <div className="flex items-center gap-1.5">
               {TIMELINE_PRESETS.map((preset) => {
@@ -766,7 +767,7 @@ export default function ScenarioThemeGraphBoard({ scenarioResult, isScenarioRunn
               <div className="flex h-full items-center justify-center rounded-lg border border-white/10 bg-black/25 text-xs text-zinc-500">
                 {isScenarioRunning
                   ? "Simulation in progress. Timeline finalizes when the run completes."
-                  : "Awaiting backend timeline synthesis for this theme."}
+                  : "Waiting for enough live data to draw this theme clearly."}
               </div>
             )}
           </div>
@@ -785,8 +786,8 @@ export default function ScenarioThemeGraphBoard({ scenarioResult, isScenarioRunn
         <div className="space-y-3">
           <div className="rounded-xl border border-white/12 bg-black/28 p-3">
             <div className="flex items-center justify-between gap-2">
-              <div className="text-xs uppercase tracking-[0.12em] text-zinc-300">Live Themes Universe</div>
-              <div className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">click a bubble</div>
+              <div className="text-xs uppercase tracking-[0.12em] text-zinc-300">Which Themes Are Heating Up</div>
+              <div className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">pick one</div>
             </div>
             <div className="mt-1 text-[10px] text-zinc-500">
               Bubble size reflects mention volume. Position shows theme heat vs market reaction.
@@ -844,7 +845,7 @@ export default function ScenarioThemeGraphBoard({ scenarioResult, isScenarioRunn
             </div>
           </div>
           <div className="rounded-xl border border-white/12 bg-black/28 p-3">
-            <div className="text-xs uppercase tracking-[0.12em] text-zinc-300">Hot/Cool Transition Feed</div>
+            <div className="text-xs uppercase tracking-[0.12em] text-zinc-300">Recent Shifts</div>
             <div className="mt-2 max-h-[154px] space-y-2 overflow-auto pr-1">
               {transitionFeed.map((entry) => (
                 <div key={`${entry.as_of}-${entry.to}`} className="rounded-lg border border-white/12 bg-white/[0.02] px-2.5 py-2">
@@ -871,7 +872,7 @@ export default function ScenarioThemeGraphBoard({ scenarioResult, isScenarioRunn
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 text-xs uppercase tracking-[0.12em] text-zinc-300">
                 <Network className="h-3.5 w-3.5 text-cyan-300" />
-                Region → Asset Propagation Bridge
+                Where The Pressure Spreads
               </div>
               <div className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">
                 {bridgeData.observed ? "source-derived" : "theme-estimated"}
@@ -910,7 +911,7 @@ export default function ScenarioThemeGraphBoard({ scenarioResult, isScenarioRunn
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 text-xs uppercase tracking-[0.12em] text-zinc-300">
               <Globe2 className="h-3.5 w-3.5 text-zinc-100" />
-              Institutional Memory Curve
+              What History Says
             </div>
             <div className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">discussion snapshots</div>
           </div>
@@ -976,10 +977,10 @@ export default function ScenarioThemeGraphBoard({ scenarioResult, isScenarioRunn
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 text-xs uppercase tracking-[0.12em] text-zinc-300">
               {trend.direction === "up" ? <TrendingUp className="h-3.5 w-3.5 text-rose-300" /> : <TrendingDown className="h-3.5 w-3.5 text-sky-300" />}
-              Risk Implication Ladder
+              What Could Move Next
             </div>
             <div className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">
-              {scenarioResult?.config ? "scenario-weighted" : "theme-baseline"}
+              {scenarioResult?.config ? "scenario view" : "theme view"}
             </div>
           </div>
 

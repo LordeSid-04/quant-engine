@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { BookOpenText, ExternalLink, Filter, Search } from "lucide-react";
 import {
+  describeApiError,
   fetchDailyBriefing,
   fetchThemeLive,
   fetchThemeSources,
@@ -209,14 +210,37 @@ export default function EvidenceExplorer() {
           </div>
 
           <div className="max-h-[62vh] space-y-2 overflow-auto pr-1">
-            {filteredEvidence.map((item) => (
-              <a
-                key={item.id}
-                href={item.url || "#"}
-                target="_blank"
-                rel="noreferrer"
-                className="block rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 py-2.5 transition hover:border-cyan-400/35 hover:bg-cyan-500/[0.05]"
-              >
+            {filteredEvidence.map((item) => {
+              const cardClassName =
+                "block rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 py-2.5 transition hover:border-cyan-400/35 hover:bg-cyan-500/[0.05]";
+
+              if (!item.url) {
+                return (
+                  <div key={item.id} className={cardClassName}>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-[10px] uppercase tracking-[0.1em] text-slate-500">{item.lane}</div>
+                      <div className="text-[11px] text-slate-500">{formatTime(item.published_at)}</div>
+                    </div>
+                    <div className="mt-1 text-sm font-medium text-cyan-200">{item.title}</div>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+                      <span>{item.source}</span>
+                      <span className="text-slate-600">|</span>
+                      <span>{item.theme}</span>
+                    </div>
+                    {item.snippet ? <div className="mt-1 text-xs text-slate-400">{item.snippet}</div> : null}
+                    <div className="mt-1 text-[11px] text-slate-500">Source link unavailable for this record.</div>
+                  </div>
+                );
+              }
+
+              return (
+                <a
+                  key={item.id}
+                  href={item.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={cardClassName}
+                >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="text-[10px] uppercase tracking-[0.1em] text-slate-500">{item.lane}</div>
                   <div className="text-[11px] text-slate-500">{formatTime(item.published_at)}</div>
@@ -232,8 +256,9 @@ export default function EvidenceExplorer() {
                   Open source
                   <ExternalLink className="h-3.5 w-3.5" />
                 </div>
-              </a>
-            ))}
+                </a>
+              );
+            })}
 
             {!loading && !filteredEvidence.length && (
               <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 py-6 text-center text-sm text-slate-500">
@@ -245,7 +270,7 @@ export default function EvidenceExplorer() {
 
         {isBriefError && (
           <div className="text-xs text-rose-300">
-            Failed to load briefing evidence: {briefError?.message || "Unknown error"}
+            {describeApiError(briefError, "Could not load briefing evidence.")}
           </div>
         )}
       </div>

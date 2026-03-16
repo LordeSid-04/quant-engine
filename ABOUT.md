@@ -1,15 +1,15 @@
 # ABOUT
 
-## Atlas Macro Economics Tracker
+## Atlas
 
 ## Team MNB
 
 ## Project Description
-Atlas Macro Economics Tracker is a decision-support platform built to reduce analysis latency in macro-financial workflows. The core problem is that global developments move quickly, while teams still rely on fragmented feeds, manual interpretation, and non-repeatable judgment. Atlas combines live macro signal monitoring, deterministic analytics, and source-backed explanations in one interface.
+Atlas is a macro decision OS that helps users turn global events into fast, explainable action. We built it to solve analysis latency in macro-financial workflows, where critical signals are spread across news feeds, dashboards, spreadsheets, and chat threads, and the reasoning often disappears after the first conversation.
 
-World Pulse detects high-signal developments and exposes data-proof context for transparency. News Navigator supports both headline-driven and prompt-driven analysis to explain local and global impact pathways. Scenario Lab stress-tests macro shocks through deterministic transmission channels, helping teams anticipate second-order effects. Memory Vault stores prior analyses so users can continue from context instead of restarting each cycle.
+Atlas unifies that flow in one product. `Signal Desk` surfaces live macro developments with evidence. `News Navigator` converts a headline or prompt into a concise action brief with portfolio-aware analysis, agent debate, and memory recall. `Scenario Lab` stress-tests how a macro shock propagates across regions and asset classes. `Memory Vault` preserves prior runs so teams do not restart from zero each cycle.
 
-By integrating evidence, simulation, and continuity, Atlas enables faster and more consistent decisions for fintech operations, strategy teams, and investment workflows. The platform is designed for practical use: explainable outputs, traceable sources, and reusable intelligence rather than black-box predictions.
+The result is a workflow that is faster, more traceable, and more useful than black-box summarization alone. Atlas is designed for practical use by fintech operators, treasury teams, macro analysts, and investment workflows that need signal, explanation, simulation, and continuity in one place.
 
 ## Deployment Link
 https://atlas-marco-economics-tracker.vercel.app/

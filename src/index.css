@@ -85,4 +85,12 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  body.map-fullscreen-active .atlas-top-nav {
+    display: none;
+  }
+
+  body.map-fullscreen-active .atlas-main {
+    padding-top: 0;
+  }
 }

@@ -28,7 +28,7 @@ export default function ScenarioControls({
   return (
     <div className="space-y-5 rounded-2xl p-5 sm:p-6">
       <div className="mb-1 flex items-center justify-between">
-        <h2 className="text-sm font-semibold tracking-tight text-zinc-100">Scenario Configuration</h2>
+        <h2 className="text-sm font-semibold tracking-tight text-zinc-100">Build Your Scenario</h2>
         <button
           onClick={onReset}
           className="atlas-focus-ring flex items-center gap-1 rounded-md px-1 py-0.5 text-xs text-zinc-500 transition-colors hover:text-zinc-100"
@@ -40,16 +40,16 @@ export default function ScenarioControls({
 
       <div className="space-y-4">
         <div className={fieldShell}>
-          <label className="mb-1.5 block text-[11px] uppercase tracking-[0.14em] text-zinc-500">Scenario Prompt</label>
+          <label className="mb-1.5 block text-[11px] uppercase tracking-[0.14em] text-zinc-500">Describe The Situation</label>
           <textarea
             value={scenarioPrompt}
             onChange={(event) => setScenarioPrompt(event.target.value)}
-            placeholder="Example: Simulate a severe oil supply shock in Saudi Arabia over 6 months."
+            placeholder="Example: Show what could happen if oil supply is disrupted in Saudi Arabia for 6 months."
             className="atlas-focus-ring min-h-[88px] w-full resize-y rounded-lg border border-white/15 bg-black/35 p-2.5 text-xs leading-relaxed text-zinc-100 placeholder:text-zinc-500"
           />
           <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
             <div className="text-[10px] text-zinc-500">
-              The prompt parser maps this into driver, event, origin economy, severity, and horizon.
+              Atlas turns this into the key driver, event, starting region, shock size, and time window.
             </div>
             <button
               type="button"
@@ -64,7 +64,7 @@ export default function ScenarioControls({
         </div>
 
         <div className={fieldShell}>
-          <label className="mb-1.5 block text-[11px] uppercase tracking-[0.14em] text-zinc-500">Macro Driver</label>
+          <label className="mb-1.5 block text-[11px] uppercase tracking-[0.14em] text-zinc-500">What Moves First</label>
           <Select value={config.driver} onValueChange={(v) => setConfig({ ...config, driver: v })}>
             <SelectTrigger className={triggerStyle}>
               <SelectValue />
@@ -80,7 +80,7 @@ export default function ScenarioControls({
         </div>
 
         <div className={fieldShell}>
-          <label className="mb-1.5 block text-[11px] uppercase tracking-[0.14em] text-zinc-500">Trigger Event</label>
+          <label className="mb-1.5 block text-[11px] uppercase tracking-[0.14em] text-zinc-500">What Happens</label>
           <Select value={config.event} onValueChange={(v) => setConfig({ ...config, event: v })}>
             <SelectTrigger className={triggerStyle}>
               <SelectValue />
@@ -96,9 +96,7 @@ export default function ScenarioControls({
         </div>
 
         <div className={fieldShell}>
-          <label className="mb-1.5 block text-[11px] uppercase tracking-[0.14em] text-zinc-500">
-            Origin Economy (Top 50)
-          </label>
+          <label className="mb-1.5 block text-[11px] uppercase tracking-[0.14em] text-zinc-500">Where It Starts</label>
           <Select value={config.region} onValueChange={(v) => setConfig({ ...config, region: v })}>
             <SelectTrigger className={triggerStyle}>
               <SelectValue />
@@ -114,7 +112,7 @@ export default function ScenarioControls({
         </div>
 
         <div className={fieldShell}>
-          <label className="mb-1.5 block text-[11px] uppercase tracking-[0.14em] text-zinc-500">Severity: {config.severity}%</label>
+          <label className="mb-1.5 block text-[11px] uppercase tracking-[0.14em] text-zinc-500">How Big The Shock Feels: {config.severity}%</label>
           <Slider
             value={[config.severity]}
             onValueChange={([v]) => setConfig({ ...config, severity: v })}
@@ -126,7 +124,7 @@ export default function ScenarioControls({
         </div>
 
         <div className={fieldShell}>
-          <label className="mb-1.5 block text-[11px] uppercase tracking-[0.14em] text-zinc-500">Time Horizon</label>
+          <label className="mb-1.5 block text-[11px] uppercase tracking-[0.14em] text-zinc-500">Over How Long</label>
           <Select value={config.horizon} onValueChange={(v) => setConfig({ ...config, horizon: v })}>
             <SelectTrigger className={triggerStyle}>
               <SelectValue />
@@ -148,7 +146,7 @@ export default function ScenarioControls({
         className="h-11 w-full gap-2 rounded-xl border border-white/24 bg-gradient-to-r from-white/[0.14] to-white/[0.08] text-zinc-100 shadow-[0_14px_34px_rgba(0,0,0,0.38)] transition duration-300 hover:border-white/34 hover:from-white/[0.2] hover:to-white/[0.1]"
       >
         <Play className="h-4 w-4" />
-        {isRunning ? "Simulating..." : "Run Full Scenario"}
+        {isRunning ? "Simulating..." : "Show Possible Outcomes"}
       </Button>
     </div>
   );

@@ -9,6 +9,7 @@ import SimulationLog from "../components/scenario/SimulationLog";
 import ScenarioThemeGraphBoard from "../components/scenario/ScenarioThemeGraphBoard";
 import { SectionHeading, SurfaceCard } from "@/components/premium/SurfaceCard";
 import {
+  describeApiError,
   fetchDailyBriefing,
   fetchScenarioOptions,
   getCachedDailyBriefing,
@@ -59,7 +60,7 @@ export default function ScenarioLab({ embedded = false }) {
   const location = useLocation();
   const cachedOptions = getCachedScenarioOptions();
   const cachedDailyBrief = getCachedDailyBriefing();
-  const { data: options, isLoading: isLoadingOptions, isError: optionsError } = useQuery({
+  const { data: options, isLoading: isLoadingOptions, isError: optionsError, error: optionsLoadError } = useQuery({
     queryKey: ["scenario-options"],
     queryFn: fetchScenarioOptions,
     initialData: cachedOptions || undefined,
@@ -178,7 +179,7 @@ export default function ScenarioLab({ embedded = false }) {
       }
       setGraphRunId((prev) => prev + 1);
     } catch (error) {
-      setRunError(error?.message || "Failed to run scenario.");
+      setRunError(describeApiError(error, "Could not run this scenario."));
     } finally {
       setIsRunning(false);
     }
@@ -226,10 +227,10 @@ export default function ScenarioLab({ embedded = false }) {
         <motion.div {...reveal}>
           <SurfaceCard tone="strong" className="p-5 sm:p-6">
             <SectionHeading
-              eyebrow="Scenario Engine"
-              title="Stress Test Macro Transmission Paths"
-              description="Calibrate drivers, inject shocks, and inspect simulated spillover across assets, regions, and confidence regimes."
-              action={<div className="atlas-chip">Pipeline Simulation</div>}
+              eyebrow="What-If Lab"
+              title="See What Could Happen Next"
+              description="Choose an event, set how big it feels, and Atlas will show which markets and regions may react first."
+              action={<div className="atlas-chip">Scenario Walkthrough</div>}
             />
           </SurfaceCard>
         </motion.div>
@@ -267,7 +268,7 @@ export default function ScenarioLab({ embedded = false }) {
               <PropagationGraph isRunning={isRunning} result={results} runId={graphRunId} />
             </div>
             {isLoadingOptions ? <div className="text-xs text-zinc-500">Loading scenario options...</div> : null}
-            {optionsError ? <div className="text-xs text-rose-300">Failed to load scenario options.</div> : null}
+            {optionsError ? <div className="text-xs text-rose-300">{describeApiError(optionsLoadError, "Could not load scenario options.")}</div> : null}
             {runError ? <div className="text-xs text-rose-300">{runError}</div> : null}
           </div>
         </motion.div>

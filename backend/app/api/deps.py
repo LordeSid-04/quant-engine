@@ -10,6 +10,7 @@ from app.config import get_settings
 from app.data.seed import get_data_repository
 from app.engines.analogue_engine import AnalogueEngine
 from app.engines.briefing_engine import BriefingEngine
+from app.local_auth import get_local_user_from_token, is_local_auth_active
 from app.engines.risk_engine import RiskEngine
 from app.engines.scenario_engine import ScenarioEngine
 from app.engines.theme_engine import ThemeEngine
@@ -76,6 +77,13 @@ async def get_current_user(authorization: str | None = Header(default=None)) -> 
     token = authorization.split(" ", 1)[1].strip()
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
+
+    if is_local_auth_active(settings):
+        try:
+            payload = get_local_user_from_token(token)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+        return AuthContext(user_id=payload.get("id", "unknown"), email=payload.get("email"))
 
     if not settings.supabase_url or not settings.supabase_anon_key:
         raise HTTPException(

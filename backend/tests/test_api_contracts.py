@@ -186,6 +186,41 @@ def test_daily_briefing_development_detail_contract(client) -> None:
     assert "proof_bundle" in data["development"]
 
 
+def test_news_navigator_contract(client) -> None:
+    payload = {
+        "prompt": "Analyze how a surprise Fed rate hike could affect Canadian banks, the CAD, and portfolio risk over the next month.",
+        "horizon": "monthly",
+        "persist_memory": True,
+        "twin": {
+            "profile_id": "canadian_pension",
+            "custom_name": "Maple Pension Desk",
+            "objective": "Protect liabilities while staying opportunistic on inflation and FX shifts.",
+        },
+        "filters": {
+            "region": "united_states",
+            "source_types": ["rss"],
+            "query": "Fed rate hike CAD banks",
+        },
+    }
+    response = client.post("/api/v1/briefing/news-navigator", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["portfolio_twin"]["label"]
+    assert data["portfolio_twin"]["primary_risk"]
+    assert len(data["agent_debate"]["agents"]) >= 4
+    assert data["agent_debate"]["consensus"]
+    assert "carry_forward_actions" in data["memory_recall"]
+    assert data["decision_artifact"]["action_checklist"]
+    assert data["memory_entry_id"]
+
+    entry = client.get(f"/api/v1/memory/entries/{data['memory_entry_id']}")
+    assert entry.status_code == 200
+    entry_data = entry.json()
+    assert entry_data["portfolio_twin"]["label"] == data["portfolio_twin"]["label"]
+    assert entry_data["agent_debate"]["consensus"] == data["agent_debate"]["consensus"]
+    assert entry_data["decision_artifact"]["title"] == data["decision_artifact"]["title"]
+
+
 def test_theme_memory_contract(client) -> None:
     brief = client.get("/api/v1/briefing/daily")
     assert brief.status_code == 200

@@ -265,6 +265,35 @@ class MemoryEntryResponse(TimestampedResponse):
     sources: list[NavigatorSourceItem]
     attachment_insights: list[NavigatorAttachmentInsight] = Field(default_factory=list)
     theme_insights: list[NavigatorThemeInsight] = Field(default_factory=list)
+    portfolio_twin: NavigatorPortfolioTwin | None = None
+    agent_debate: NavigatorAgentDebate | None = None
+    memory_recall: NavigatorMemoryRecall | None = None
+    decision_artifact: NavigatorDecisionArtifact | None = None
+    explanation: ExplanationTrace
+
+
+class MemoryImportRequest(BaseModel):
+    heading: str = Field(default="Imported memory", min_length=3, max_length=240)
+    prompt: str = Field(default="Imported conversation", min_length=1, max_length=8000)
+    answer: str = Field(default="", max_length=20000)
+    created_at: str = ""
+    theme_id: str = Field(default="imported-memory", max_length=120)
+    theme_label: str = Field(default="Imported Memory", max_length=120)
+    horizon: str = Field(default="daily", max_length=24)
+    analysis_mode: str = Field(default="imported", max_length=40)
+    importance_analysis: str = ""
+    local_impact_analysis: str = ""
+    global_impact_analysis: str = ""
+    emerging_theme_analysis: str = ""
+    sources: list[NavigatorSourceItem] = Field(default_factory=list)
+
+
+class MemoryImportResponse(TimestampedResponse):
+    entry_id: str
+    heading: str
+    created_at: datetime
+    theme_label: str
+    imported: bool = True
     explanation: ExplanationTrace
 
 
@@ -290,11 +319,18 @@ class NewsNavigatorFilters(BaseModel):
     query: str = Field(default="", max_length=320)
 
 
+class NavigatorTwinConfig(BaseModel):
+    profile_id: str = Field(default="multi_asset_fund", max_length=80)
+    custom_name: str = Field(default="", max_length=120)
+    objective: str = Field(default="", max_length=240)
+
+
 class NewsNavigatorRequest(BaseModel):
     prompt: str = Field(..., min_length=4, max_length=4000)
     horizon: str = Field(default="daily", min_length=4, max_length=12)
     attachments: list[NavigatorAttachment] = Field(default_factory=list)
     filters: NewsNavigatorFilters = Field(default_factory=NewsNavigatorFilters)
+    twin: NavigatorTwinConfig = Field(default_factory=NavigatorTwinConfig)
     persist_memory: bool = True
 
 
@@ -359,6 +395,66 @@ class NavigatorAttachmentInsight(BaseModel):
     confidence: float = Field(..., ge=0.0, le=1.0)
 
 
+class NavigatorPortfolioTwin(BaseModel):
+    profile_id: str
+    label: str
+    institution_type: str
+    mandate: str
+    objective: str = ""
+    summary: str
+    primary_risk: str
+    primary_opportunity: str
+    pnl_pressure_points: list[str] = Field(default_factory=list)
+    defensive_moves: list[str] = Field(default_factory=list)
+    offensive_moves: list[str] = Field(default_factory=list)
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
+class NavigatorDebateAgent(BaseModel):
+    agent_id: str
+    name: str
+    role: str
+    stance: str
+    conviction: int = Field(..., ge=0, le=100)
+    thesis: str
+    key_risk: str
+    recommendation: str
+
+
+class NavigatorAgentDebate(BaseModel):
+    agents: list[NavigatorDebateAgent] = Field(default_factory=list)
+    consensus: str
+    disagreement: str
+    next_action: str
+
+
+class NavigatorMemoryRecallItem(BaseModel):
+    entry_id: str
+    heading: str
+    theme_label: str
+    created_at: datetime
+    similarity: int = Field(..., ge=0, le=100)
+    why_relevant: str
+    carry_forward: str
+
+
+class NavigatorMemoryRecall(BaseModel):
+    summary: str
+    regime_signal: str
+    matches: list[NavigatorMemoryRecallItem] = Field(default_factory=list)
+    carry_forward_actions: list[str] = Field(default_factory=list)
+
+
+class NavigatorDecisionArtifact(BaseModel):
+    title: str
+    audience: str
+    executive_call: str
+    why_now: str
+    briefing_points: list[str] = Field(default_factory=list)
+    action_checklist: list[str] = Field(default_factory=list)
+    caution_note: str
+
+
 class NewsNavigatorResponse(TimestampedResponse):
     prompt: str
     horizon: str
@@ -372,6 +468,10 @@ class NewsNavigatorResponse(TimestampedResponse):
     theme_insights: list[NavigatorThemeInsight]
     sources: list[NavigatorSourceItem]
     attachment_insights: list[NavigatorAttachmentInsight] = Field(default_factory=list)
+    portfolio_twin: NavigatorPortfolioTwin | None = None
+    agent_debate: NavigatorAgentDebate | None = None
+    memory_recall: NavigatorMemoryRecall | None = None
+    decision_artifact: NavigatorDecisionArtifact | None = None
     memory_entry_id: str
     memory_heading: str = ""
     explanation: ExplanationTrace

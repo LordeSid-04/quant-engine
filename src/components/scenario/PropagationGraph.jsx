@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { Network } from "lucide-react";
+import { Activity, ArrowLeftRight, Flame, Globe2, Landmark, Network, ShieldAlert, TrendingUp } from "lucide-react";
 
 const NODE_DESCRIPTIONS = {
   origin: {
@@ -46,9 +46,18 @@ const NODE_DESCRIPTIONS = {
   },
 };
 
-const NODE_CORE_COLOR = "#f59e0b";
+const NODE_CORE_COLOR = "#fb7185";
 const NODE_RING_COLOR = "#ffffff";
-const NODE_CENTER_COLOR = "#fb923c";
+const NODE_CENTER_COLOR = "#e11d48";
+
+const CHANNEL_LEGEND = [
+  { label: "Origin", icon: Flame },
+  { label: "Rates", icon: TrendingUp },
+  { label: "FX", icon: ArrowLeftRight },
+  { label: "Credit", icon: Landmark },
+  { label: "Risk", icon: ShieldAlert },
+  { label: "EM", icon: Globe2 },
+];
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -585,7 +594,7 @@ export default function PropagationGraph({ isRunning, result, runId = 0 }) {
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Network className={`h-4 w-4 ${isRunning ? "animate-pulse text-zinc-100" : "text-zinc-500"}`} />
-            <h2 className="text-[13px] font-semibold uppercase tracking-[0.08em] text-zinc-100">Causal Propagation Network</h2>
+            <h2 className="text-[13px] font-semibold uppercase tracking-[0.08em] text-zinc-100">Market Impact Map</h2>
           </div>
           <div className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">
             nodes {nodeCount} | linked moves {Math.max(impactCount, nodeCount)}
@@ -595,6 +604,18 @@ export default function PropagationGraph({ isRunning, result, runId = 0 }) {
 
       <div className="relative flex-1 p-4 sm:p-5">
         <div ref={mountRef} className="h-full w-full overflow-hidden rounded-xl border border-white/10 bg-black" />
+
+        <div className="pointer-events-none absolute left-8 top-8 z-10 flex max-w-[min(92%,520px)] flex-wrap gap-2">
+          {CHANNEL_LEGEND.map((item) => {
+            const Icon = item.icon;
+            return (
+              <div key={item.label} className="inline-flex items-center gap-1.5 rounded-full border border-white/16 bg-black/48 px-3 py-1.5 text-[10px] uppercase tracking-[0.1em] text-zinc-200 backdrop-blur-sm">
+                <Icon className="h-3.5 w-3.5 text-rose-200" />
+                {item.label}
+              </div>
+            );
+          })}
+        </div>
 
         {hoveredNode ? (
           <div
@@ -635,8 +656,11 @@ export default function PropagationGraph({ isRunning, result, runId = 0 }) {
         {!isRunning && !result ? (
           <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
             <div className="text-center">
-              <div className="text-sm font-medium tracking-wide text-zinc-300">Configure and run a scenario</div>
-              <div className="mt-1 text-[11px] text-zinc-500">drag to orbit | scroll to zoom | click nodes to pin details</div>
+              <div className="flex items-center justify-center gap-2 text-sm font-medium tracking-wide text-zinc-300">
+                <Activity className="h-4 w-4 text-rose-300" />
+                Run a scenario to see which channels react first
+              </div>
+              <div className="mt-1 text-[11px] text-zinc-500">drag to orbit | scroll to zoom | click a channel to pin details</div>
             </div>
           </div>
         ) : null}

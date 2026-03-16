@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -48,11 +49,47 @@ class WorldPulseEngine:
         self.countries = self.repository.curated.top_countries()
         self.edges = self.repository.curated.transmission_edges()
         self.templates = self.repository.curated.explanation_templates()
+        self.factor_names = sorted(
+            {
+                factor
+                for mapping in self.indicator_weights.values()
+                for factor in mapping
+            }
+        )
+        self._factor_state_cache: FactorState | None = None
+        self._factor_state_cached_at: datetime | None = None
+        self._factor_state_cache_ttl_seconds = max(18.0, float(self.settings.theme_live_cache_seconds))
+        self._factor_state_fetch_timeout_seconds = 2.5
+        self._factor_state_refresh_task: asyncio.Task[None] | None = None
 
     async def compute_factor_state(self) -> FactorState:
-        symbols = list(self.indicator_weights.keys())
-        quotes = await self.repository.fetch_quotes(symbols)
+        cached_state = self._get_cached_factor_state()
+        if cached_state is not None:
+            return cached_state
 
+        symbols = list(self.indicator_weights.keys())
+        try:
+            quotes = await asyncio.wait_for(
+                self.repository.fetch_quotes(symbols),
+                timeout=self._factor_state_fetch_timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            self._schedule_factor_state_refresh(symbols)
+            fallback = self._factor_state_from_snapshot()
+            self._store_factor_state(fallback)
+            return fallback
+        except Exception:
+            self._schedule_factor_state_refresh(symbols)
+            fallback = self._factor_state_from_snapshot()
+            self._store_factor_state(fallback)
+            return fallback
+
+        factor_state = self._factor_state_from_quotes(quotes)
+        self._store_factor_state(factor_state)
+        return factor_state
+
+    def _factor_state_from_quotes(self, quotes: dict[str, dict[str, Any] | None]) -> FactorState:
+        symbols = list(self.indicator_weights.keys())
         factors: dict[str, float] = {}
         valid = 0
         fresh = 0
@@ -106,6 +143,55 @@ class WorldPulseEngine:
             latest_market_observation=latest_market_observation,
             market_inputs_used=valid,
         )
+
+    def _factor_state_from_snapshot(self) -> FactorState:
+        snapshot = self.repository.get_latest_world_pulse_snapshot() or {}
+        raw_factors = snapshot.get("factors", {}) if isinstance(snapshot, dict) else {}
+        normalized_factors = {
+            factor: float(raw_factors.get(factor, 0.0))
+            for factor in self.factor_names
+        }
+        if not normalized_factors:
+            normalized_factors = {factor: 0.0 for factor in self.factor_names}
+
+        provider_mix = snapshot.get("provider_mix", {}) if isinstance(snapshot, dict) else {}
+        return FactorState(
+            factors=normalized_factors,
+            coverage=float(clamp(float(snapshot.get("coverage", 0.0) or 0.0), 0.0, 1.0)),
+            freshness=float(clamp(float(snapshot.get("freshness", 0.0) or 0.0), 0.0, 1.0)),
+            stability=float(clamp(float(snapshot.get("stability", 0.72) or 0.72), 0.0, 1.0)),
+            provider_mix=provider_mix if isinstance(provider_mix, dict) else {},
+            latest_market_observation=str(snapshot.get("latest_market_observation", "")),
+            market_inputs_used=int(snapshot.get("market_inputs_used", 0) or 0),
+        )
+
+    def _get_cached_factor_state(self) -> FactorState | None:
+        if self._factor_state_cache is None or self._factor_state_cached_at is None:
+            return None
+        age_seconds = (datetime.now(tz=timezone.utc) - self._factor_state_cached_at).total_seconds()
+        if age_seconds > self._factor_state_cache_ttl_seconds:
+            return None
+        return self._factor_state_cache
+
+    def _store_factor_state(self, factor_state: FactorState) -> None:
+        self._factor_state_cache = factor_state
+        self._factor_state_cached_at = datetime.now(tz=timezone.utc)
+
+    def _schedule_factor_state_refresh(self, symbols: list[str]) -> None:
+        if self._factor_state_refresh_task is not None and not self._factor_state_refresh_task.done():
+            return
+        self._factor_state_refresh_task = asyncio.create_task(
+            self._refresh_factor_state(symbols),
+            name="world-pulse-factor-refresh",
+        )
+
+    async def _refresh_factor_state(self, symbols: list[str]) -> None:
+        try:
+            quotes = await self.repository.fetch_quotes(symbols)
+            factor_state = self._factor_state_from_quotes(quotes)
+            self._store_factor_state(factor_state)
+        except Exception:
+            return
 
     async def build_world_pulse(self, *, factor_state: FactorState | None = None) -> WorldPulseResponse:
         factor_state = factor_state or await self.compute_factor_state()
@@ -169,6 +255,7 @@ class WorldPulseEngine:
                 "stability": factor_state.stability,
                 "provider_mix": factor_state.provider_mix,
                 "latest_market_observation": factor_state.latest_market_observation,
+                "market_inputs_used": factor_state.market_inputs_used,
             }
         )
 

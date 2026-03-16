@@ -6,6 +6,13 @@ import httpx
 from fastapi import APIRouter, Header, HTTPException, status
 
 from app.config import get_settings
+from app.local_auth import (
+    authenticate_local_user,
+    create_local_user,
+    ensure_local_user,
+    get_local_user_from_token,
+    is_local_auth_active,
+)
 from app.schemas.auth import AuthSessionResponse, AuthUserResponse, LoginRequest, SignupRequest, TestAccountResponse
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
@@ -40,7 +47,7 @@ def _map_user(payload: dict[str, Any]) -> AuthUserResponse:
     return AuthUserResponse(
         id=str(payload.get("id", "")),
         email=payload.get("email", ""),
-        full_name=str(metadata.get("full_name") or metadata.get("name") or ""),
+        full_name=str(payload.get("full_name") or metadata.get("full_name") or metadata.get("name") or ""),
     )
 
 
@@ -144,12 +151,24 @@ async def auth_testing_account() -> TestAccountResponse:
 
 @router.post("/login", response_model=AuthSessionResponse)
 async def auth_login(payload: LoginRequest) -> AuthSessionResponse:
+    if is_local_auth_active():
+        session = authenticate_local_user(email=payload.email, password=payload.password)
+        if not session:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password.")
+        return _map_session(session)
     session = await _supabase_login(email=payload.email, password=payload.password)
     return _map_session(session)
 
 
 @router.post("/signup", response_model=AuthSessionResponse)
 async def auth_signup(payload: SignupRequest) -> AuthSessionResponse:
+    if is_local_auth_active():
+        try:
+            session = create_local_user(email=payload.email, password=payload.password, full_name=payload.full_name.strip())
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        return _map_session(session)
+
     existing_user = await _find_user_by_email(payload.email)
     if existing_user:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="An account with this email already exists.")
@@ -161,6 +180,14 @@ async def auth_signup(payload: SignupRequest) -> AuthSessionResponse:
 @router.post("/bootstrap-test-user", response_model=AuthSessionResponse)
 async def auth_bootstrap_test_user() -> AuthSessionResponse:
     settings = get_settings()
+    if is_local_auth_active(settings):
+        session = ensure_local_user(
+            email=settings.test_login_email,
+            password=settings.test_login_password,
+            full_name=settings.test_login_display_name,
+        )
+        return _map_session(session)
+
     try:
         session = await _supabase_login(email=settings.test_login_email, password=settings.test_login_password)
         return _map_session(session)
@@ -194,6 +221,12 @@ async def auth_me(authorization: str | None = Header(default=None)) -> AuthUserR
     token = authorization.split(" ", 1)[1].strip()
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token.")
+
+    if is_local_auth_active():
+        try:
+            return _map_user(get_local_user_from_token(token))
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
 
     supabase_url, anon_key, timeout = _require_supabase()
     headers = {

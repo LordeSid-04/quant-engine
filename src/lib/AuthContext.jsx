@@ -11,6 +11,25 @@ import {
 
 const AuthContext = createContext(null);
 
+function restoreSessionErrorMessage(error) {
+  const rawMessage = String(error?.message || "").trim();
+  const normalized = rawMessage.toLowerCase();
+  if (!normalized) {
+    return "Session expired. Please sign in again.";
+  }
+  if (
+    normalized.includes("invalid authentication token") ||
+    normalized.includes("missing bearer token") ||
+    normalized.includes("jwt")
+  ) {
+    return "Previous session expired. Please sign in again.";
+  }
+  if (normalized.includes("timed out") || normalized.includes("cannot reach backend")) {
+    return "Previous session is unavailable. Please sign in again.";
+  }
+  return rawMessage;
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [session, setSession] = useState(() => getStoredAuthSession());
@@ -46,7 +65,7 @@ export function AuthProvider({ children }) {
         setUser(null);
         setSession(null);
         setIsAuthenticated(false);
-        setAuthError(error?.message || "Session expired. Please sign in again.");
+        setAuthError(restoreSessionErrorMessage(error));
       } finally {
         if (!cancelled) {
           setIsLoadingAuth(false);

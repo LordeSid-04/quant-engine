@@ -12,7 +12,11 @@ const SECTION_TRANSITION = {
 function SectionDivider({ label }) {
   return (
     <div className="mx-auto w-full max-w-[1550px] px-4 sm:px-6 lg:px-8">
-      <div className="py-1 text-[11px] uppercase tracking-[0.2em] text-zinc-500/85">{label}</div>
+      <div className="flex items-center gap-3 py-2">
+        <div className="h-px flex-1 bg-white/10" />
+        <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500/85">{label}</div>
+        <div className="h-px flex-1 bg-white/10" />
+      </div>
     </div>
   );
 }

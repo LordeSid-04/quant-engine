@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
 import { motion } from "framer-motion";
 import { ArrowRight, FlaskConical, Landmark, Sparkles } from "lucide-react";
+import { useAtlasSectionNavigation } from "@/lib/sectionNavigation";
 
 export default function WorldPulseHero({
   selectedDevelopment,
@@ -8,10 +9,10 @@ export default function WorldPulseHero({
   rightPanel = null,
 }) {
   const topThemes = useMemo(() => (themeBoard || []).slice(0, 3), [themeBoard]);
-  const scenarioTarget = selectedDevelopment?.development_id
-    ? `/?development_id=${encodeURIComponent(selectedDevelopment.development_id)}#scenario-lab`
-    : "/#scenario-lab";
-  const memoryTarget = "/#memory-vault";
+  const goToAtlasSection = useAtlasSectionNavigation();
+  const scenarioSearch = selectedDevelopment?.development_id
+    ? `?development_id=${encodeURIComponent(selectedDevelopment.development_id)}`
+    : "";
 
   return (
     <section className="relative">
@@ -25,29 +26,34 @@ export default function WorldPulseHero({
           >
             <div className="atlas-chip border-white/25 bg-white/[0.07] text-zinc-200">
               <Sparkles className="h-3.5 w-3.5 text-zinc-100" />
-              Live Macro Intelligence
+              Live macro workspace
             </div>
             <h1 className="mt-5 text-4xl font-semibold leading-[1.05] tracking-[-0.03em] text-zinc-100 sm:text-5xl lg:text-6xl">
-              Signal Confidence For Every
-              <span className="atlas-text-gradient block">Global Macro Regime Shift</span>
+              Track global macro shifts
+              <span className="atlas-text-gradient block">with one click</span>
             </h1>
+            <p className="mt-5 max-w-2xl text-base leading-7 text-zinc-300 sm:text-lg">
+              Follow the biggest development, test a what-if path, and reopen past thinking without leaving the same flow.
+            </p>
 
             <div className="mt-6 flex flex-wrap items-center gap-3">
-              <a
-                href={scenarioTarget}
+              <button
+                type="button"
+                onClick={() => goToAtlasSection("scenario-lab", { search: scenarioSearch })}
                 className="group inline-flex items-center gap-2 rounded-full border border-white/30 bg-white px-5 py-2.5 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-950 transition duration-300 hover:bg-zinc-200"
               >
                 <FlaskConical className="h-3.5 w-3.5" />
                 Run Scenario
                 <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-              </a>
-              <a
-                href={memoryTarget}
+              </button>
+              <button
+                type="button"
+                onClick={() => goToAtlasSection("memory-vault")}
                 className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/[0.04] px-5 py-2.5 text-xs font-medium uppercase tracking-[0.14em] text-zinc-200 transition duration-300 hover:border-white/30 hover:bg-white/[0.08]"
               >
                 <Landmark className="h-3.5 w-3.5" />
                 Open Memory Vault
-              </a>
+              </button>
             </div>
           </motion.div>
 

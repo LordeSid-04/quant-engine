@@ -495,7 +495,7 @@ class ThemeEngine:
         if not self.feed_defs:
             return []
 
-        timeout = max(2.0, float(self.settings.theme_news_rss_timeout_seconds))
+        timeout = min(max(2.0, float(self.settings.theme_news_rss_timeout_seconds)), 2.75)
         items: list[dict[str, Any]] = []
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
             async def fetch_feed(feed: dict[str, Any]) -> list[dict[str, Any]]:

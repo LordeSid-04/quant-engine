@@ -106,6 +106,7 @@ class DataRepository:
         self._running = False
         self._poll_task: asyncio.Task[None] | None = None
         self._ws_task: asyncio.Task[None] | None = None
+        self._startup_prewarm_task: asyncio.Task[None] | None = None
 
         self._watchlist_symbols = all_watchlist_symbols()
         self._twelvedata_reverse_lookup = self._build_twelvedata_reverse_lookup()
@@ -131,6 +132,11 @@ class DataRepository:
         if self.twelvedata.configured and self.settings.twelvedata_ws_enabled:
             self._ws_task = asyncio.create_task(self._twelvedata_ws_loop(), name="market-twelvedata-ws")
 
+        self._startup_prewarm_task = asyncio.create_task(
+            self._warm_runtime_quotes(initial_delay_seconds=8.0),
+            name="market-cache-prewarm",
+        )
+
     async def stop_market_streams(self) -> None:
         self._running = False
         tasks = [task for task in [self._poll_task, self._ws_task] if task is not None]
@@ -141,8 +147,22 @@ class DataRepository:
             task.cancel()
 
         await asyncio.gather(*tasks, return_exceptions=True)
+        if self._startup_prewarm_task is not None and not self._startup_prewarm_task.done():
+            self._startup_prewarm_task.cancel()
+            await asyncio.gather(self._startup_prewarm_task, return_exceptions=True)
         self._poll_task = None
         self._ws_task = None
+        self._startup_prewarm_task = None
+
+    async def _warm_runtime_quotes(self, *, initial_delay_seconds: float = 0.0) -> None:
+        try:
+            if initial_delay_seconds > 0:
+                await asyncio.sleep(initial_delay_seconds)
+            await self.fetch_quotes(self._watchlist_symbols, allow_cache=False)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.debug("Initial market quote prewarm skipped due to provider latency.", exc_info=True)
 
     def market_feed_status(self) -> dict[str, Any]:
         now = _utc_now()
@@ -770,11 +790,11 @@ class DataRepository:
             )
         )
 
-    def save_public_memory_entry(self, payload: dict[str, Any]) -> str:
+    def save_public_memory_entry(self, payload: dict[str, Any], *, created_at: str | None = None) -> str:
         entry_id = str(payload.get("id") or f"memory-{_utc_now().strftime('%Y%m%d%H%M%S%f')}")
         row = {
             "id": entry_id,
-            "created_at": _utc_now_iso(),
+            "created_at": str(created_at or _utc_now_iso()),
             "payload": payload,
         }
         self._public_memory_entries = [row] + self._public_memory_entries[:199]

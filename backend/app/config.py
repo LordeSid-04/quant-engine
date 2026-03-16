@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     test_login_email: str = Field(default="atlas.test@demo.local", alias="TEST_LOGIN_EMAIL")
     test_login_password: str = Field(default="AtlasDemo123!", alias="TEST_LOGIN_PASSWORD")
     test_login_display_name: str = Field(default="Atlas Test User", alias="TEST_LOGIN_DISPLAY_NAME")
+    local_auth_enabled: bool = Field(default=True, alias="LOCAL_AUTH_ENABLED")
+    local_auth_secret: str = Field(default="atlas-local-dev-secret", alias="LOCAL_AUTH_SECRET")
+    local_auth_session_hours: int = Field(default=24, alias="LOCAL_AUTH_SESSION_HOURS")
+    local_auth_store_path: str = Field(default=".data/local_auth_users.json", alias="LOCAL_AUTH_STORE_PATH")
 
     auth_required: bool = Field(default=False, alias="AUTH_REQUIRED")
     auth_jwks_cache_ttl_seconds: int = Field(default=300, alias="AUTH_JWKS_CACHE_TTL_SECONDS")
@@ -83,7 +87,7 @@ class Settings(BaseSettings):
     theme_news_rss_timeout_seconds: float = Field(default=6.0, alias="THEME_NEWS_RSS_TIMEOUT_SECONDS")
     theme_news_max_articles: int = Field(default=80, alias="THEME_NEWS_MAX_ARTICLES")
     mediastack_api_key: str = Field(default="", alias="MEDIASTACK_API_KEY")
-    mediastack_base_url: str = Field(default="http://api.mediastack.com/v1", alias="MEDIASTACK_BASE_URL")
+    mediastack_base_url: str = Field(default="https://api.mediastack.com/v1", alias="MEDIASTACK_BASE_URL")
     mediastack_timeout_seconds: float = Field(default=6.0, alias="MEDIASTACK_TIMEOUT_SECONDS")
     mediastack_max_articles: int = Field(default=80, alias="MEDIASTACK_MAX_ARTICLES")
     mediastack_keywords: str = Field(

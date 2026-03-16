@@ -1,7 +1,13 @@
 from fastapi import APIRouter, HTTPException, Query
 
 from app.api.deps import AuthRequired, get_briefing_engine
-from app.schemas.briefing import MemoryEntryResponse, MemoryHistoryResponse, ThemeMemoryResponse
+from app.schemas.briefing import (
+    MemoryEntryResponse,
+    MemoryHistoryResponse,
+    MemoryImportRequest,
+    MemoryImportResponse,
+    ThemeMemoryResponse,
+)
 
 router = APIRouter(prefix="/api/v1/memory", tags=["memory"], dependencies=[AuthRequired])
 
@@ -19,6 +25,12 @@ async def memory_entry(entry_id: str) -> MemoryEntryResponse:
         return await engine.get_memory_entry(entry_id=entry_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/import", response_model=MemoryImportResponse)
+async def memory_import(payload: MemoryImportRequest) -> MemoryImportResponse:
+    engine = get_briefing_engine()
+    return await engine.import_memory_entry(payload=payload)
 
 
 @router.get("/themes/{theme_id}", response_model=ThemeMemoryResponse)

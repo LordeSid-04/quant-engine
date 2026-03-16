@@ -2,10 +2,8 @@
 
 import asyncio
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
-
-import httpx
 
 from app.config import get_settings
 from app.data.repository import DataRepository
@@ -25,21 +23,30 @@ from app.schemas.briefing import (
     FeedStatus,
     MarketProofSignal,
     MacroDevelopment,
+    MemoryImportRequest,
+    MemoryImportResponse,
     MemoryEntryResponse,
     MemoryHistoryItem,
     MemoryHistoryResponse,
     MemoryPreviewItem,
     ModelProof,
     NewsHeadlinesResponse,
+    NavigatorAgentDebate,
+    NavigatorDebateAgent,
     NewsNavigatorFilters,
     NewsNavigatorRequest,
     NewsNavigatorResponse,
     NavigatorAttachment,
     NavigatorAttachmentInsight,
+    NavigatorDecisionArtifact,
     NavigatorHeadlineItem,
     NavigatorHighlight,
+    NavigatorMemoryRecall,
+    NavigatorMemoryRecallItem,
+    NavigatorPortfolioTwin,
     NavigatorSourceItem,
     NavigatorThemeInsight,
+    NavigatorTwinConfig,
     ProofBundle,
     RecommendedAction,
     RiskPosture,
@@ -58,6 +65,7 @@ from app.schemas.briefing import (
     WatchTrigger,
 )
 from app.schemas.common import ConfidenceComponents, ConfidenceTrace, ExplanationTrace
+from app.schemas.themes import ThemeSourceArticle
 
 
 class BriefingEngine:
@@ -78,6 +86,43 @@ class BriefingEngine:
         self.signal_model = SignalModelEngine()
         self._navigator_source_pool_cache: dict[tuple[int, int], dict[str, Any]] = {}
         self._headlines_cache: dict[str, dict[str, Any]] = {}
+        self._portfolio_twin_profiles: dict[str, dict[str, Any]] = {
+            "multi_asset_fund": {
+                "label": "Global Multi-Asset Fund",
+                "institution_type": "Buy-side allocator",
+                "mandate": "Protect risk-adjusted returns across rates, equities, FX, and credit.",
+                "watch_priorities": ["duration", "fx", "credit spreads", "equity factor rotation"],
+                "action_bias": "rebalance early when regime signals cluster",
+            },
+            "retail_bank": {
+                "label": "Retail Bank Treasury",
+                "institution_type": "Deposit-led bank",
+                "mandate": "Defend liquidity, net interest margin, and mortgage/consumer credit resilience.",
+                "watch_priorities": ["funding costs", "deposit beta", "mortgage stress", "capital buffers"],
+                "action_bias": "tighten liquidity buffers and pricing discipline",
+            },
+            "fintech_lender": {
+                "label": "Fintech Credit Platform",
+                "institution_type": "Fintech lender",
+                "mandate": "Preserve underwriting quality, warehouse funding, and customer affordability.",
+                "watch_priorities": ["delinquencies", "warehouse lines", "refinancing demand", "unit economics"],
+                "action_bias": "protect credit quality before chasing growth",
+            },
+            "global_treasury": {
+                "label": "Global Corporate Treasury",
+                "institution_type": "Corporate treasury",
+                "mandate": "Stabilize cash, funding, and cross-border FX exposure across operating regions.",
+                "watch_priorities": ["fx hedges", "commodity input costs", "short-term funding", "working capital"],
+                "action_bias": "hedge cash volatility and reduce surprise exposure",
+            },
+            "canadian_pension": {
+                "label": "Canadian Pension CIO",
+                "institution_type": "Long-horizon asset owner",
+                "mandate": "Balance long-duration liabilities with global growth, inflation, and real-asset exposure.",
+                "watch_priorities": ["real rates", "CAD", "infrastructure", "private-market marks"],
+                "action_bias": "favor resilient duration and inflation-aware allocations",
+            },
+        }
 
         self._scenario_presets: dict[str, dict[str, Any]] = {
             "inflation-shock": {
@@ -644,6 +689,67 @@ class BriefingEngine:
                 for item in payload.get("theme_insights", [])
                 if isinstance(item, dict)
             ],
+            portfolio_twin=(
+                NavigatorPortfolioTwin.model_validate(payload.get("portfolio_twin"))
+                if isinstance(payload.get("portfolio_twin"), dict)
+                else None
+            ),
+            agent_debate=(
+                NavigatorAgentDebate.model_validate(payload.get("agent_debate"))
+                if isinstance(payload.get("agent_debate"), dict)
+                else None
+            ),
+            memory_recall=(
+                NavigatorMemoryRecall.model_validate(payload.get("memory_recall"))
+                if isinstance(payload.get("memory_recall"), dict)
+                else None
+            ),
+            decision_artifact=(
+                NavigatorDecisionArtifact.model_validate(payload.get("decision_artifact"))
+                if isinstance(payload.get("decision_artifact"), dict)
+                else None
+            ),
+            explanation=explanation,
+        )
+
+    async def import_memory_entry(self, *, payload: MemoryImportRequest) -> MemoryImportResponse:
+        created_at = _parse_datetime(payload.created_at) or datetime.now(tz=timezone.utc)
+        normalized_heading = str(payload.heading or "Imported memory").strip() or "Imported memory"
+        normalized_prompt = str(payload.prompt or "Imported conversation").strip() or "Imported conversation"
+        normalized_answer = str(payload.answer or "").strip()
+
+        entry_id = self.repository.save_public_memory_entry(
+            {
+                "id": f"public-memory-{datetime.now(tz=timezone.utc).strftime('%Y%m%d%H%M%S%f')}",
+                "theme_id": str(payload.theme_id or "imported-memory").strip() or "imported-memory",
+                "theme_label": str(payload.theme_label or "Imported Memory").strip() or "Imported Memory",
+                "memory_heading": normalized_heading,
+                "prompt": normalized_prompt,
+                "response_summary": normalized_answer[:1200],
+                "answer": normalized_answer,
+                "horizon": str(payload.horizon or "daily").strip() or "daily",
+                "analysis_mode": str(payload.analysis_mode or "imported").strip() or "imported",
+                "importance_analysis": str(payload.importance_analysis or "").strip(),
+                "local_impact_analysis": str(payload.local_impact_analysis or "").strip(),
+                "global_impact_analysis": str(payload.global_impact_analysis or "").strip(),
+                "emerging_theme_analysis": str(payload.emerging_theme_analysis or "").strip(),
+                "source_count": len(payload.sources),
+                "sources": [item.model_dump(mode="json") for item in payload.sources],
+            },
+            created_at=created_at.isoformat(),
+        )
+
+        explanation = make_trace(
+            summary=f"Imported memory entry {entry_id} into Memory Vault.",
+            top_factors=[],
+        )
+        return MemoryImportResponse(
+            as_of=datetime.now(tz=timezone.utc),
+            entry_id=entry_id,
+            heading=normalized_heading,
+            created_at=created_at,
+            theme_label=str(payload.theme_label or "Imported Memory").strip() or "Imported Memory",
+            imported=True,
             explanation=explanation,
         )
 
@@ -651,9 +757,11 @@ class BriefingEngine:
         prompt = payload.prompt.strip()
         horizon = self._normalize_horizon(payload.horizon)
         window_hours = {"daily": 24, "weekly": 168, "monthly": 720, "yearly": 8760}[horizon]
+        source_window_hours = max(window_hours, 168)
         filters = self._sanitize_navigator_filters(payload.filters)
+        twin = self._sanitize_twin_config(payload.twin)
         live, source_pool = await self._collect_navigator_source_pool_with_backfill(
-            window_hours=window_hours,
+            window_hours=source_window_hours,
             limit_per_theme=14,
         )
         filtered_pool = self._apply_news_filters(rows=source_pool, filters=filters)
@@ -741,12 +849,7 @@ class BriefingEngine:
             if relevance < 0.12 and token_overlap == 0 and source_support == 0:
                 continue
 
-            local_region = theme.top_regions[0].upper() if theme.top_regions else "PRIMARY REGION"
-            local_asset = theme.top_assets[0] if theme.top_assets else "multi-asset channels"
-            local_impact = (
-                f"{local_region} is most exposed through {local_asset}; "
-                f"monitor funding costs, sector leadership, and event risk over the next {horizon} cycle."
-            )
+            local_impact = self._local_impact_channel(theme=theme, horizon=horizon)
             global_impact = self._global_impact_channel(theme=theme, horizon=horizon)
             rationale = (
                 f"{theme.label} is {theme.state}. Temperature {theme.temperature}/100, "
@@ -823,18 +926,12 @@ class BriefingEngine:
                 "Emerging-theme scoring is available, but forward-looking impact interpretation was intentionally skipped."
             )
         else:
-            importance_analysis = (
-                (
-                    f"{top_theme.label} is the highest-priority signal for the {horizon} window: "
-                    f"it leads on source confirmation, market reaction, and narrative persistence."
-                )
-                if top_theme
-                else "No dominant macro signal could be isolated with high confidence from current verified coverage."
+            importance_analysis = self._importance_summary(
+                top_theme=top_theme,
+                second_theme=second_theme,
+                source_count=len(scoring_sources),
+                horizon=horizon,
             )
-            if second_theme:
-                importance_analysis += (
-                    f" Secondary watch item: {second_theme.label}."
-                )
 
             local_impact_analysis = (
                 top_theme.local_impact if top_theme else "Local impact assessment is limited until more source depth is available."
@@ -914,6 +1011,37 @@ class BriefingEngine:
             )
             for row in selected_sources
         ]
+        portfolio_twin = self._build_portfolio_twin(
+            twin=twin,
+            top_theme=top_theme,
+            second_theme=second_theme,
+            source_items=source_items,
+            horizon=horizon,
+        )
+        memory_recall = self._build_memory_recall(
+            prompt=prompt,
+            filters=filters,
+            top_theme=top_theme,
+            horizon=horizon,
+            portfolio_twin=portfolio_twin,
+        )
+        agent_debate = self._build_agent_debate(
+            top_theme=top_theme,
+            second_theme=second_theme,
+            source_items=source_items,
+            portfolio_twin=portfolio_twin,
+            horizon=horizon,
+            analysis_mode=analysis_mode,
+        )
+        decision_artifact = self._build_decision_artifact(
+            portfolio_twin=portfolio_twin,
+            agent_debate=agent_debate,
+            memory_recall=memory_recall,
+            importance_analysis=importance_analysis,
+            local_impact_analysis=local_impact_analysis,
+            global_impact_analysis=global_impact_analysis,
+            top_theme=top_theme,
+        )
 
         if analysis_mode == "informational":
             answer = self._informational_news_digest(
@@ -934,6 +1062,10 @@ class BriefingEngine:
                 local_impact_analysis=local_impact_analysis,
                 global_impact_analysis=global_impact_analysis,
                 emerging_theme_analysis=emerging_theme_analysis,
+                portfolio_twin=portfolio_twin,
+                agent_debate=agent_debate,
+                memory_recall=memory_recall,
+                decision_artifact=decision_artifact,
             )
         memory_entry_id = ""
         memory_heading = ""
@@ -960,6 +1092,7 @@ class BriefingEngine:
                     "source_count": len(source_items),
                     "attachment_count": len(payload.attachments),
                     "filters": filters.model_dump(),
+                    "twin": twin.model_dump(mode="json"),
                     "analysis_mode": analysis_mode,
                     "importance_analysis": importance_analysis,
                     "local_impact_analysis": local_impact_analysis,
@@ -968,14 +1101,18 @@ class BriefingEngine:
                     "sources": [item.model_dump(mode="json") for item in source_items],
                     "attachment_insights": [item.model_dump(mode="json") for item in attachment_insights],
                     "theme_insights": [item.model_dump(mode="json") for item in insight_rows],
+                    "portfolio_twin": portfolio_twin.model_dump(mode="json"),
+                    "agent_debate": agent_debate.model_dump(mode="json"),
+                    "memory_recall": memory_recall.model_dump(mode="json"),
+                    "decision_artifact": decision_artifact.model_dump(mode="json"),
                 }
             )
 
         explanation = make_trace(
             summary=(
                 f"News Navigator ({analysis_mode}) processed {len(source_items)} verified sources, scored "
-                f"{len(insight_rows)} macro themes, applied live filter set, and "
-                f"{'persisted memory entry ' + memory_entry_id if memory_entry_id else 'returned a non-persisted live analysis'}."
+                f"{len(insight_rows)} macro themes, generated a portfolio twin, agent debate, and memory recall, "
+                f"then {'persisted memory entry ' + memory_entry_id if memory_entry_id else 'returned a non-persisted live analysis'}."
             ),
             top_factors=[
                 {
@@ -1002,6 +1139,10 @@ class BriefingEngine:
             theme_insights=insight_rows,
             sources=source_items,
             attachment_insights=attachment_insights,
+            portfolio_twin=portfolio_twin,
+            agent_debate=agent_debate,
+            memory_recall=memory_recall,
+            decision_artifact=decision_artifact,
             memory_entry_id=memory_entry_id,
             memory_heading=memory_heading,
             explanation=explanation,
@@ -1020,6 +1161,7 @@ class BriefingEngine:
     ) -> NewsHeadlinesResponse:
         normalized_horizon = self._normalize_horizon(horizon)
         window_hours = {"daily": 24, "weekly": 168, "monthly": 720, "yearly": 8760}[normalized_horizon]
+        source_window_hours = max(window_hours, 168)
         bounded_limit = int(clamp(limit, 6, 80))
         filters = self._sanitize_navigator_filters(
             NewsNavigatorFilters(
@@ -1051,7 +1193,7 @@ class BriefingEngine:
                     return cached_response
 
         _, source_pool = await self._collect_navigator_source_pool_with_backfill(
-            window_hours=window_hours,
+            window_hours=source_window_hours,
             limit_per_theme=max(12, bounded_limit),
         )
         filtered_rows = self._apply_news_filters(rows=source_pool, filters=filters)
@@ -1143,6 +1285,18 @@ class BriefingEngine:
         if not candidate_themes and live.themes:
             candidate_themes = [live.themes[0]]
 
+        cached_source_pool = self._runtime_navigator_source_pool(
+            live=live,
+            window_hours=window_hours,
+        )
+        if cached_source_pool:
+            self._navigator_source_pool_cache[cache_key] = {
+                "as_of": now.isoformat(),
+                "live": live,
+                "source_pool": list(cached_source_pool),
+            }
+            return live, cached_source_pool
+
         async def _load_theme_sources(theme: Any) -> tuple[Any, Any]:
             try:
                 payload = await self.theme_engine.get_theme_sources(
@@ -1191,6 +1345,86 @@ class BriefingEngine:
         }
         return live, source_pool
 
+    def _runtime_navigator_source_pool(
+        self,
+        *,
+        live: Any,
+        window_hours: int,
+    ) -> list[dict[str, Any]]:
+        article_cache = getattr(self.theme_engine, "_articles_cache", {})
+        if not isinstance(article_cache, dict) or not article_cache:
+            return []
+
+        since = datetime.now(tz=timezone.utc) - timedelta(hours=int(window_hours))
+        live_theme_map = {item.theme_id: item for item in list(getattr(live, "themes", []))[:8]}
+        if not live_theme_map:
+            return []
+
+        source_pool: list[dict[str, Any]] = []
+        seen_source_keys: set[str] = set()
+        for row in article_cache.values():
+            if not isinstance(row, dict):
+                continue
+            published_at = _parse_datetime(row.get("published_at"))
+            if published_at is None or published_at < since:
+                continue
+
+            payload = row.get("payload", {})
+            payload_dict = payload if isinstance(payload, dict) else {}
+            theme_id = str(payload_dict.get("top_theme_id") or "").strip()
+            if theme_id not in live_theme_map:
+                matched = [
+                    str(item).strip()
+                    for item in row.get("matched_theme_ids", [])
+                    if str(item).strip() in live_theme_map
+                ]
+                if not matched:
+                    continue
+                theme_id = matched[0]
+
+            theme = live_theme_map.get(theme_id)
+            if theme is None:
+                continue
+
+            source_key = str(row.get("id") or row.get("url") or "").strip()
+            if not source_key or source_key in seen_source_keys:
+                continue
+            seen_source_keys.add(source_key)
+
+            title = str(row.get("title", ""))
+            excerpt = str(row.get("summary", ""))
+            text = f"{title} {excerpt}".lower()
+            article = ThemeSourceArticle(
+                article_id=str(row.get("id", "")),
+                title=title,
+                url=str(row.get("url", "")),
+                source=str(row.get("source", "")),
+                published_at=published_at,
+                region_tags=[str(item) for item in row.get("region_tags", [])],
+                asset_tags=[str(item) for item in row.get("asset_tags", [])],
+                relevance_score=float(clamp(float(row.get("relevance_score", 0.0)), 0.0, 1.0)),
+                matched_keywords=[str(item) for item in row.get("matched_keywords", [])],
+                excerpt=excerpt,
+            )
+            source_pool.append(
+                {
+                    "theme_id": theme.theme_id,
+                    "theme_label": theme.label,
+                    "theme_temperature": float(theme.temperature),
+                    "article": article,
+                    "text": text,
+                    "region": self._primary_region(article.region_tags, text),
+                    "content_types": self._headline_content_types(text),
+                    "source_type": self._source_type(article.source),
+                }
+            )
+
+        source_pool.sort(
+            key=lambda item: (item["article"].published_at, float(item["article"].relevance_score)),
+            reverse=True,
+        )
+        return source_pool
+
     async def _collect_navigator_source_pool_with_backfill(
         self,
         *,
@@ -1204,15 +1438,24 @@ class BriefingEngine:
         if source_pool:
             return live, source_pool
 
-        for fallback_window in (168, 720, 8760):
-            if fallback_window <= int(window_hours):
-                continue
-            fallback_live, fallback_pool = await self._collect_navigator_source_pool(
-                window_hours=fallback_window,
-                limit_per_theme=limit_per_theme,
+        fallback_windows = [window for window in (168, 720, 8760) if window > int(window_hours)]
+        if fallback_windows:
+            fallback_results = await asyncio.gather(
+                *[
+                    self._collect_navigator_source_pool(
+                        window_hours=fallback_window,
+                        limit_per_theme=limit_per_theme,
+                    )
+                    for fallback_window in fallback_windows
+                ],
+                return_exceptions=True,
             )
-            if fallback_pool:
-                return fallback_live, fallback_pool
+            for fallback_result in fallback_results:
+                if isinstance(fallback_result, Exception):
+                    continue
+                fallback_live, fallback_pool = fallback_result
+                if fallback_pool:
+                    return fallback_live, fallback_pool
         return live, source_pool
 
     def _sanitize_navigator_filters(self, filters: NewsNavigatorFilters | None) -> NewsNavigatorFilters:
@@ -1241,6 +1484,407 @@ class BriefingEngine:
             content_types=normalized_content,
             source_types=normalized_source_types,
             query=str(value.query or "").strip(),
+        )
+
+    def _sanitize_twin_config(self, twin: NavigatorTwinConfig | None) -> NavigatorTwinConfig:
+        value = twin or NavigatorTwinConfig()
+        profile_id = str(value.profile_id or "multi_asset_fund").strip().lower()
+        if profile_id not in self._portfolio_twin_profiles:
+            profile_id = "multi_asset_fund"
+        return NavigatorTwinConfig(
+            profile_id=profile_id,
+            custom_name=str(value.custom_name or "").strip()[:120],
+            objective=str(value.objective or "").strip()[:240],
+        )
+
+    def _build_portfolio_twin(
+        self,
+        *,
+        twin: NavigatorTwinConfig,
+        top_theme: NavigatorThemeInsight | None,
+        second_theme: NavigatorThemeInsight | None,
+        source_items: list[NavigatorSourceItem],
+        horizon: str,
+    ) -> NavigatorPortfolioTwin:
+        profile = self._portfolio_twin_profiles.get(
+            twin.profile_id,
+            self._portfolio_twin_profiles["multi_asset_fund"],
+        )
+        label = twin.custom_name or str(profile["label"])
+        mandate = str(profile["mandate"])
+        objective = twin.objective or mandate
+        theme_label = top_theme.label if top_theme else "macro regime uncertainty"
+        primary_risk, primary_opportunity = self._portfolio_risk_and_opportunity(
+            profile_id=twin.profile_id,
+            top_theme=top_theme,
+            second_theme=second_theme,
+        )
+        watch_priorities = [str(item) for item in profile.get("watch_priorities", [])][:4]
+        pnl_pressure_points = [
+            self._portfolio_pressure_line(priority=priority, top_theme=top_theme, horizon=horizon)
+            for priority in watch_priorities[:3]
+        ]
+        defensive_moves = [
+            f"Elevate monitoring on {watch_priorities[0]} and shorten decision latency while {theme_label.lower()} remains active."
+            if watch_priorities
+            else f"Elevate monitoring cadence while {theme_label.lower()} remains active.",
+            f"Run downside overlays for {theme_label.lower()} across the next {horizon} cycle before adding fresh risk.",
+            f"Prepare a hedging or liquidity response that matches the mandate to {str(profile.get('action_bias', 'act deliberately'))}.",
+        ]
+        offensive_moves = [
+            f"Lean into resilient exposures that benefit if {theme_label.lower()} continues to broaden across verified sources.",
+            f"Use volatility dispersion to rotate toward assets aligned with {label}'s mandate rather than chasing beta blindly.",
+        ]
+        summary = (
+            f"{label} should treat {theme_label} as the live regime anchor. "
+            f"{top_theme.global_impact if top_theme else 'Global spillover remains mixed, so capital allocation should stay selective.'}"
+        )
+        confidence = float(
+            clamp(
+                (float(top_theme.relevance_score) if top_theme else 0.36) * 0.62
+                + min(0.28, len(source_items) * 0.03)
+                + (0.08 if second_theme else 0.0),
+                0.35,
+                0.95,
+            )
+        )
+        return NavigatorPortfolioTwin(
+            profile_id=twin.profile_id,
+            label=label,
+            institution_type=str(profile["institution_type"]),
+            mandate=mandate,
+            objective=objective,
+            summary=summary,
+            primary_risk=primary_risk,
+            primary_opportunity=primary_opportunity,
+            pnl_pressure_points=pnl_pressure_points,
+            defensive_moves=defensive_moves,
+            offensive_moves=offensive_moves,
+            confidence=round(confidence, 4),
+        )
+
+    def _portfolio_risk_and_opportunity(
+        self,
+        *,
+        profile_id: str,
+        top_theme: NavigatorThemeInsight | None,
+        second_theme: NavigatorThemeInsight | None,
+    ) -> tuple[str, str]:
+        theme_text = " ".join(
+            [
+                str(top_theme.label if top_theme else ""),
+                str(top_theme.local_impact if top_theme else ""),
+                str(top_theme.global_impact if top_theme else ""),
+                str(second_theme.label if second_theme else ""),
+            ]
+        ).lower()
+
+        if any(term in theme_text for term in ["rate", "yield", "inflation", "policy"]):
+            risk = "Higher-for-longer policy repricing can tighten funding conditions and punish duration-heavy bets."
+            opportunity = "Short-duration carry, select financials, and disciplined repricing can outperform if the path stays orderly."
+        elif any(term in theme_text for term in ["energy", "oil", "commodity", "supply"]):
+            risk = "Commodity pass-through can squeeze margins, household affordability, and inflation-sensitive assets."
+            opportunity = "Real assets, commodity-linked cash flows, and pricing-power businesses can gain resilience."
+        elif any(term in theme_text for term in ["bank", "liquidity", "credit", "spread"]):
+            risk = "Funding stress can widen spreads, reduce balance-sheet flexibility, and expose weak underwriting."
+            opportunity = "High-quality balance sheets and liquidity providers can take share when weaker peers retreat."
+        elif any(term in theme_text for term in ["trade", "geopolit", "sanction", "tariff"]):
+            risk = "Cross-border friction can disrupt supply chains, widen risk premia, and create sudden FX gaps."
+            opportunity = "Regional diversification and local champions can benefit as capital re-routes to perceived stability."
+        else:
+            risk = "Regime uncertainty can trigger cross-asset repricing before internal teams fully adapt."
+            opportunity = "Teams that react earlier than consensus can capture cleaner entries and avoid forced moves."
+
+        if profile_id == "retail_bank":
+            risk = risk.replace("duration-heavy bets", "net interest margin and mortgage affordability")
+        elif profile_id == "fintech_lender":
+            risk = risk.replace("funding conditions", "warehouse funding and borrower affordability")
+        elif profile_id == "global_treasury":
+            risk = risk.replace("duration-heavy bets", "cash planning and FX hedges")
+        elif profile_id == "canadian_pension":
+            opportunity = opportunity.replace("Short-duration carry, select financials, and disciplined repricing", "Liability-aware duration, quality infrastructure, and inflation-linked resilience")
+        return risk, opportunity
+
+    def _portfolio_pressure_line(
+        self,
+        *,
+        priority: str,
+        top_theme: NavigatorThemeInsight | None,
+        horizon: str,
+    ) -> str:
+        theme_label = top_theme.label if top_theme else "macro spillover"
+        key = str(priority or "").strip().lower()
+        if key == "duration":
+            return f"Duration: {theme_label} can move the front end faster than benchmark hedges over the next {horizon} cycle."
+        if key == "fx":
+            return f"FX: watch for funding and translation pressure if {theme_label.lower()} broadens into currencies."
+        if key == "credit spreads":
+            return f"Credit spreads: refinancing premia can widen before fundamentals fully reset when {theme_label.lower()} accelerates."
+        if key == "equity factor rotation":
+            return f"Equity factors: leadership can shift quickly toward quality, defensives, or value as {theme_label.lower()} reprices."
+        if key == "funding costs":
+            return f"Funding costs: wholesale markets can tighten ahead of deposit repricing when {theme_label.lower()} intensifies."
+        if key == "deposit beta":
+            return f"Deposit beta: customer pricing pressure can rise if {theme_label.lower()} keeps pushing policy expectations higher."
+        if key == "mortgage stress":
+            return f"Mortgage stress: affordability and delinquency signals deserve closer surveillance during the next {horizon} cycle."
+        if key == "capital buffers":
+            return f"Capital buffers: loss-absorbing capacity matters more if {theme_label.lower()} triggers credit deterioration."
+        if key == "delinquencies":
+            return f"Delinquencies: borrower strain can show up with a lag even when headlines move first."
+        if key == "warehouse lines":
+            return f"Warehouse lines: lender confidence can reprice abruptly if {theme_label.lower()} hits funding markets."
+        if key == "refinancing demand":
+            return f"Refinancing demand: customer behavior can swing quickly as rates and affordability expectations reset."
+        if key == "unit economics":
+            return f"Unit economics: acquisition and funding assumptions should be re-tested while {theme_label.lower()} remains active."
+        if key == "fx hedges":
+            return f"FX hedges: hedge ratios may need faster review if {theme_label.lower()} drives currency volatility."
+        if key == "commodity input costs":
+            return f"Input costs: margin sensitivity rises when {theme_label.lower()} feeds directly into commodity-linked expenses."
+        if key == "short-term funding":
+            return f"Short-term funding: rollover costs can change within days under a stronger {theme_label.lower()} signal."
+        if key == "working capital":
+            return f"Working capital: liquidity timing becomes more fragile if customers or suppliers react unevenly to {theme_label.lower()}."
+        if key == "real rates":
+            return f"Real rates: liability-aware portfolios need to watch discount-rate shifts closely during the next {horizon} cycle."
+        if key == "cad":
+            return f"CAD: cross-border returns can drift materially if {theme_label.lower()} hits North American growth and rates asymmetrically."
+        if key == "infrastructure":
+            return f"Infrastructure: long-duration cash-flow assets should be stress-tested against the latest regime change."
+        if key == "private-market marks":
+            return f"Private-market marks: valuation lag can hide risk while public markets react in real time."
+        return f"{priority.title()}: pressure can build quickly if {theme_label.lower()} keeps broadening over the next {horizon} cycle."
+
+    def _build_agent_debate(
+        self,
+        *,
+        top_theme: NavigatorThemeInsight | None,
+        second_theme: NavigatorThemeInsight | None,
+        source_items: list[NavigatorSourceItem],
+        portfolio_twin: NavigatorPortfolioTwin,
+        horizon: str,
+        analysis_mode: str,
+    ) -> NavigatorAgentDebate:
+        theme_label = top_theme.label if top_theme else "macro regime uncertainty"
+        evidence_count = len(source_items)
+        scout_conviction = int(clamp(42 + evidence_count * 5 + (float(top_theme.relevance_score) * 20 if top_theme else 0), 35, 94))
+        strategist_conviction = int(clamp(48 + (float(top_theme.relevance_score) * 34 if top_theme else 12), 38, 93))
+        risk_conviction = int(clamp(52 + (8 if second_theme else 0) + max(0, evidence_count - 2) * 4, 42, 96))
+        pm_conviction = int(clamp((scout_conviction + strategist_conviction + risk_conviction) / 3.0, 40, 94))
+        observational = analysis_mode == "informational"
+
+        agents = [
+            NavigatorDebateAgent(
+                agent_id="signal_scout",
+                name="Signal Scout",
+                role="Evidence coverage and persistence",
+                stance="Observe" if observational else ("Lean hotter" if top_theme and top_theme.heat_state.lower() in {"hot", "warming"} else "Need confirmation"),
+                conviction=scout_conviction,
+                thesis=(
+                    f"{evidence_count} verified sources are clustering around {theme_label.lower()}, suggesting the signal is broad enough to matter."
+                    if source_items
+                    else f"Source depth around {theme_label.lower()} is still thin, so confidence should stay measured."
+                ),
+                key_risk="The signal may be headline-heavy and lose confirmation if follow-through narrows.",
+                recommendation="Keep the signal on a higher refresh cadence and wait for confirmation breadth to widen another step.",
+            ),
+            NavigatorDebateAgent(
+                agent_id="macro_strategist",
+                name="Macro Strategist",
+                role="Transmission path and regime framing",
+                stance="Defensive macro tilt" if not observational and top_theme else "Scenario mapping only",
+                conviction=strategist_conviction,
+                thesis=(
+                    top_theme.global_impact
+                    if top_theme
+                    else "Transmission remains mixed, so scenario mapping matters more than a hard directional call."
+                ),
+                key_risk="Second-order spillovers can reach FX, rates, and credit before teams update internal assumptions.",
+                recommendation=(
+                    f"Translate {theme_label.lower()} into a three-step transmission map for the next {horizon} window."
+                ),
+            ),
+            NavigatorDebateAgent(
+                agent_id="risk_officer",
+                name="Risk Officer",
+                role="Downside control and resilience",
+                stance="Protect downside first",
+                conviction=risk_conviction,
+                thesis=portfolio_twin.primary_risk,
+                key_risk="Waiting for perfect certainty can allow hidden balance-sheet or liquidity stress to compound.",
+                recommendation=portfolio_twin.defensive_moves[0] if portfolio_twin.defensive_moves else "Raise monitoring cadence immediately.",
+            ),
+            NavigatorDebateAgent(
+                agent_id="portfolio_pm",
+                name="Portfolio PM",
+                role="Positioning and capital deployment",
+                stance="Stay selective" if observational else "Selective action",
+                conviction=pm_conviction,
+                thesis=portfolio_twin.primary_opportunity,
+                key_risk="Acting too aggressively can overfit a still-evolving narrative and create whipsaw risk.",
+                recommendation=portfolio_twin.offensive_moves[0] if portfolio_twin.offensive_moves else "Add risk only where conviction and liquidity align.",
+            ),
+        ]
+
+        disagreement = (
+            "The team agrees the signal is real, but timing remains contested: Risk wants immediate protection while the PM wants selective deployment only after another layer of confirmation."
+            if source_items
+            else "The team disagrees on urgency because live source confirmation is still shallow."
+        )
+        consensus = (
+            f"Consensus: treat {theme_label.lower()} as decision-relevant now, protect downside first, and only add risk where the transmission path is already visible."
+            if not observational
+            else f"Consensus: keep {theme_label.lower()} in observation mode, preserve optionality, and avoid over-claiming directional certainty."
+        )
+        next_action = (
+            portfolio_twin.defensive_moves[1]
+            if len(portfolio_twin.defensive_moves) > 1
+            else "Run a faster scenario review and circulate a concise action memo."
+        )
+        return NavigatorAgentDebate(
+            agents=agents,
+            consensus=consensus,
+            disagreement=disagreement,
+            next_action=next_action,
+        )
+
+    def _build_memory_recall(
+        self,
+        *,
+        prompt: str,
+        filters: NewsNavigatorFilters,
+        top_theme: NavigatorThemeInsight | None,
+        horizon: str,
+        portfolio_twin: NavigatorPortfolioTwin,
+    ) -> NavigatorMemoryRecall:
+        rows = self.repository.get_public_memory_entries(limit=60)
+        query_terms = set(
+            _extract_keywords(
+                " ".join(
+                    [
+                        prompt,
+                        filters.query,
+                        top_theme.label if top_theme else "",
+                        portfolio_twin.objective,
+                    ]
+                )
+            )[:14]
+        )
+        if not query_terms:
+            query_terms = set(_extract_keywords(prompt)[:8])
+
+        matches: list[NavigatorMemoryRecallItem] = []
+        for row in rows:
+            payload = row.get("payload", {})
+            if not isinstance(payload, dict):
+                continue
+
+            row_text = " ".join(
+                [
+                    str(payload.get("prompt") or ""),
+                    str(payload.get("theme_label") or ""),
+                    str(payload.get("importance_analysis") or ""),
+                    str(payload.get("global_impact_analysis") or ""),
+                    str(payload.get("local_impact_analysis") or ""),
+                ]
+            )
+            row_terms = set(_extract_keywords(row_text)[:20])
+            overlap = sorted(query_terms.intersection(row_terms))
+            same_theme = bool(top_theme and str(payload.get("theme_id") or "").strip() == top_theme.theme_id)
+            same_horizon = str(payload.get("horizon") or "").strip().lower() == horizon
+            score = float(
+                clamp(
+                    (len(overlap) / max(4, len(query_terms))) * 0.64
+                    + (0.26 if same_theme else 0.0)
+                    + (0.08 if same_horizon else 0.0),
+                    0.0,
+                    1.0,
+                )
+            )
+            if score < 0.24:
+                continue
+
+            created_at = _parse_datetime(row.get("created_at")) or datetime.now(tz=timezone.utc)
+            overlap_text = ", ".join(overlap[:3]) if overlap else str(payload.get("theme_label") or "similar macro logic")
+            carry_forward = str(payload.get("importance_analysis") or payload.get("response_summary") or "").strip()
+            matches.append(
+                NavigatorMemoryRecallItem(
+                    entry_id=str(row.get("id", "")),
+                    heading=str(payload.get("memory_heading") or payload.get("theme_label") or "Saved discussion"),
+                    theme_label=str(payload.get("theme_label") or "Unclassified"),
+                    created_at=created_at,
+                    similarity=int(clamp(round(score * 100.0), 0, 100)),
+                    why_relevant=f"Shared context around {overlap_text}.",
+                    carry_forward=(carry_forward[:180] + "...") if len(carry_forward) > 180 else carry_forward,
+                )
+            )
+
+        matches.sort(key=lambda item: (item.similarity, item.created_at), reverse=True)
+        matches = matches[:3]
+        carry_forward_actions = [item.carry_forward for item in matches if item.carry_forward][:2]
+        if portfolio_twin.defensive_moves:
+            carry_forward_actions.extend(portfolio_twin.defensive_moves[:1])
+        deduped_actions: list[str] = []
+        seen_actions: set[str] = set()
+        for action in carry_forward_actions:
+            normalized = action.strip()
+            if not normalized or normalized in seen_actions:
+                continue
+            seen_actions.add(normalized)
+            deduped_actions.append(normalized)
+        if matches:
+            summary = (
+                f"Memory Recall found {len(matches)} related institutional memories that rhyme with the current {top_theme.label.lower() if top_theme else 'macro'} setup."
+            )
+            regime_signal = (
+                f"Recurring pattern: teams repeatedly revisit {matches[0].theme_label.lower()} when similar cross-asset stress builds."
+            )
+        else:
+            summary = "Memory Recall did not find a strong prior match, so this run becomes a new institutional anchor."
+            regime_signal = "No prior internal precedent cleared the similarity threshold."
+        return NavigatorMemoryRecall(
+            summary=summary,
+            regime_signal=regime_signal,
+            matches=matches,
+            carry_forward_actions=deduped_actions[:4],
+        )
+
+    def _build_decision_artifact(
+        self,
+        *,
+        portfolio_twin: NavigatorPortfolioTwin,
+        agent_debate: NavigatorAgentDebate,
+        memory_recall: NavigatorMemoryRecall,
+        importance_analysis: str,
+        local_impact_analysis: str,
+        global_impact_analysis: str,
+        top_theme: NavigatorThemeInsight | None,
+    ) -> NavigatorDecisionArtifact:
+        theme_label = top_theme.label if top_theme else "Macro Situation"
+        briefing_points = [
+            importance_analysis,
+            local_impact_analysis,
+            global_impact_analysis,
+            memory_recall.summary,
+        ]
+        action_checklist = portfolio_twin.defensive_moves[:2] + portfolio_twin.offensive_moves[:1] + [agent_debate.next_action]
+        deduped_checklist: list[str] = []
+        seen: set[str] = set()
+        for item in action_checklist:
+            normalized = item.strip()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            deduped_checklist.append(normalized)
+        return NavigatorDecisionArtifact(
+            title=f"{portfolio_twin.label}: {theme_label} Decision Memo",
+            audience=f"{portfolio_twin.institution_type} leadership",
+            executive_call=agent_debate.consensus,
+            why_now=portfolio_twin.summary,
+            briefing_points=briefing_points[:4],
+            action_checklist=deduped_checklist[:5],
+            caution_note=agent_debate.disagreement,
         )
 
     def _has_active_news_filters(self, filters: NewsNavigatorFilters) -> bool:
@@ -1641,6 +2285,10 @@ class BriefingEngine:
         local_impact_analysis: str,
         global_impact_analysis: str,
         emerging_theme_analysis: str,
+        portfolio_twin: NavigatorPortfolioTwin,
+        agent_debate: NavigatorAgentDebate,
+        memory_recall: NavigatorMemoryRecall,
+        decision_artifact: NavigatorDecisionArtifact,
     ) -> str:
         fallback_answer = self._fallback_news_navigator_answer(
             prompt=prompt,
@@ -1652,105 +2300,11 @@ class BriefingEngine:
             local_impact_analysis=local_impact_analysis,
             global_impact_analysis=global_impact_analysis,
             emerging_theme_analysis=emerging_theme_analysis,
+            portfolio_twin=portfolio_twin,
+            agent_debate=agent_debate,
+            memory_recall=memory_recall,
+            decision_artifact=decision_artifact,
         )
-
-        api_key = str(self.settings.openai_api_key or "").strip()
-        model = str(self.settings.openai_model or "gpt-4o-mini").strip()
-        base_url = str(self.settings.openai_base_url or "https://api.openai.com/v1").rstrip("/")
-        if not api_key:
-            return fallback_answer
-
-        attachment_lines = []
-        for item in attachments[:4]:
-            excerpt = (item.text_excerpt or "").strip()
-            excerpt_short = excerpt[:450]
-            attachment_lines.append(
-                f"- {item.file_name} ({item.mime_type}, {item.size_bytes} bytes)"
-                + (f": {excerpt_short}" if excerpt_short else "")
-            )
-        attachment_insight_lines = []
-        for row in attachment_insights[:4]:
-            attachment_insight_lines.append(
-                f"- {row.file_name} [{row.media_type}]: {row.summary} | relevance: {row.relevance} | impact: {row.impact}"
-            )
-
-        source_lines = []
-        for item in source_items[:8]:
-            source_lines.append(
-                f"- {item.title} | {item.source} | {item.published_at.isoformat()} | relevance {item.relevance_score:.2f}"
-            )
-        insight_lines = []
-        for item in theme_insights[:5]:
-            insight_lines.append(
-                f"- {item.label} ({item.heat_state}, relevance {item.relevance_score:.2f}) "
-                f"| local: {item.local_impact} | global: {item.global_impact}"
-            )
-
-        user_prompt = (
-            f"User request:\n{prompt}\n\n"
-            f"Time horizon: {horizon}\n\n"
-            f"Importance analysis:\n{importance_analysis}\n\n"
-            f"Local impact analysis:\n{local_impact_analysis}\n\n"
-            f"Global impact analysis:\n{global_impact_analysis}\n\n"
-            f"Emerging theme analysis:\n{emerging_theme_analysis}\n\n"
-            f"Macro theme analysis:\n" + ("\n".join(insight_lines) if insight_lines else "- none") + "\n\n"
-            f"Verified sources:\n" + ("\n".join(source_lines) if source_lines else "- none") + "\n\n"
-            f"Uploaded files:\n" + ("\n".join(attachment_lines) if attachment_lines else "- none") + "\n\n"
-            f"Attachment interpretation:\n" + ("\n".join(attachment_insight_lines) if attachment_insight_lines else "- none")
-        )
-
-        user_content: Any
-        image_blocks = []
-        for item in attachments[:2]:
-            if item.image_data_url and str(item.image_data_url).startswith("data:image/"):
-                image_blocks.append(
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": str(item.image_data_url)[:120000]},
-                    }
-                )
-        if image_blocks:
-            user_content = [{"type": "text", "text": user_prompt}, *image_blocks]
-        else:
-            user_content = user_prompt
-
-        request_payload = {
-            "model": model,
-            "temperature": 0.2,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": (
-                        "You are Atlas News Navigator. Write concise, factual, polished English for both "
-                        "asset managers and the public. Keep it structured and brief. Do not mention model "
-                        "names, providers, or implementation details. Use only the provided verified context. "
-                        "Output with these section headers in plain text: "
-                        "Summary, Why It Matters Now, Local Impact, Global Impact, What To Watch."
-                    ),
-                },
-                {"role": "user", "content": user_content},
-            ],
-        }
-
-        try:
-            async with httpx.AsyncClient(timeout=28.0) as client:
-                response = await client.post(
-                    f"{base_url}/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json=request_payload,
-                )
-            if response.status_code == 200:
-                payload = response.json()
-                choices = payload.get("choices", [])
-                if choices:
-                    content = choices[0].get("message", {}).get("content", "")
-                    if isinstance(content, str) and content.strip():
-                        return content.strip()
-        except Exception:
-            pass
 
         return fallback_answer
 
@@ -1766,29 +2320,63 @@ class BriefingEngine:
         local_impact_analysis: str,
         global_impact_analysis: str,
         emerging_theme_analysis: str,
+        portfolio_twin: NavigatorPortfolioTwin,
+        agent_debate: NavigatorAgentDebate,
+        memory_recall: NavigatorMemoryRecall,
+        decision_artifact: NavigatorDecisionArtifact,
     ) -> str:
         top = theme_insights[0] if theme_insights else None
-        anchor_theme = top.label if top else "the active macro complex"
-        top_sources = ", ".join(sorted({item.source for item in source_items[:6]})) if source_items else "limited source coverage"
+        second = theme_insights[1] if len(theme_insights) > 1 else None
+        anchor_theme = top.label if top else "Macro cross-currents"
+        live_count = len([item for item in source_items if not str(item.article_id).startswith("seed-")])
+        verified_count = len(source_items)
+        source_tape = ", ".join(sorted({item.source for item in source_items[:3]})) if source_items else "limited source coverage"
         attachment_note = (
             " ".join(f"{row.file_name}: {row.summary}" for row in attachment_insights[:2])
             if attachment_insights
-            else "No supporting attachments were provided."
+            else ""
+        )
+        profile_edge = self._portfolio_specific_edge(
+            profile_id=portfolio_twin.profile_id,
+            theme_id=str(getattr(top, "theme_id", "") or ""),
+        )
+        memory_line = (
+            f"Closest analogue: {memory_recall.matches[0].heading} ({memory_recall.matches[0].similarity}% match)."
+            if memory_recall.matches
+            else "No close internal precedent cleared the similarity threshold, so this run becomes the new anchor."
+        )
+        watch_lines = self._navigator_watchlist(
+            top_theme=top,
+            second_theme=second,
+            source_items=source_items,
+            portfolio_twin=portfolio_twin,
+            decision_artifact=decision_artifact,
         )
         return (
             "Summary\n"
-            f"- Request focus: {prompt.strip().rstrip('.')} ({horizon}).\n"
-            f"- Primary theme: {anchor_theme}.\n\n"
+            f"- Primary signal: {anchor_theme} ({live_count or verified_count} live / verified sources, {str(getattr(top, 'heat_state', 'stable')).lower()}).\n"
+            f"- Derived edge: {profile_edge}\n\n"
             "Why It Matters Now\n"
             f"- {importance_analysis}\n"
-            f"- Emerging-theme read: {emerging_theme_analysis}\n\n"
+            f"- Secondary amplifier: {second.label if second else 'none outranking it yet'}. {emerging_theme_analysis}\n\n"
             "Local Impact\n"
             f"- {local_impact_analysis}\n\n"
             "Global Impact\n"
-            f"- {global_impact_analysis}\n\n"
+            f"- {global_impact_analysis}\n"
+            f"- Evidence tape: {source_tape}.{(' ' + attachment_note) if attachment_note else ''}\n\n"
+            "Portfolio Twin\n"
+            f"- Desk call: {self._clip_text(portfolio_twin.summary, 172)}\n"
+            f"- Risk / opportunity: {portfolio_twin.primary_risk} | {portfolio_twin.primary_opportunity}\n"
+            f"- Do now: {portfolio_twin.defensive_moves[0] if portfolio_twin.defensive_moves else 'Stay selective until evidence broadens.'}\n\n"
+            "Agent Debate\n"
+            f"- Consensus: {agent_debate.consensus}\n"
+            f"- Live disagreement: {agent_debate.disagreement}\n"
+            f"- Next action: {agent_debate.next_action}\n\n"
+            "Memory Recall\n"
+            f"- {memory_line}\n"
+            f"- Carry forward: {'; '.join(memory_recall.carry_forward_actions[:2]) or 'None yet'}\n\n"
             "What To Watch\n"
-            f"- Verified source set: {top_sources}.\n"
-            f"- Attachment signal: {attachment_note}"
+            + "".join(f"- {line}\n" for line in watch_lines)
         )
 
     def _analyze_attachments(
@@ -2025,12 +2613,152 @@ class BriefingEngine:
         if not top_theme:
             return "Global spillover assessment is low-confidence due to sparse evidence."
         summary = (
-            f"{top_theme.global_impact} Key transmission channels for the {horizon} horizon: "
-            "sovereign-rate repricing, FX risk premia, and credit-spread dispersion."
+            f"{top_theme.global_impact} Transmission chain for the {horizon} window: "
+            f"{self._theme_transmission_chain(str(top_theme.theme_id or ''))}."
         )
         if second_theme:
             summary += f" Secondary link to monitor: {second_theme.label.lower()}."
         return summary
+
+    def _importance_summary(
+        self,
+        *,
+        top_theme: NavigatorThemeInsight | None,
+        second_theme: NavigatorThemeInsight | None,
+        source_count: int,
+        horizon: str,
+    ) -> str:
+        if not top_theme:
+            return "No dominant macro signal could be isolated with high confidence from current verified coverage."
+
+        summary = (
+            f"{top_theme.label} is the lead signal for the {horizon} window with {source_count} supporting source hits "
+            f"and a {top_theme.heat_state.lower()} regime score."
+        )
+        if second_theme:
+            summary += f" Secondary amplifier: {second_theme.label.lower()}."
+        return summary
+
+    def _local_impact_channel(self, *, theme: Any, horizon: str) -> str:
+        theme_id = str(getattr(theme, "theme_id", "") or "").strip().lower()
+        region = self._format_region_label(
+            str(getattr(theme, "top_regions", ["primary region"])[0] if getattr(theme, "top_regions", None) else "primary region")
+        )
+        asset = str(getattr(theme, "top_assets", ["local funding channels"])[0] if getattr(theme, "top_assets", None) else "local funding channels")
+
+        if theme_id in {"inflation-shock", "monetary-policy"}:
+            return (
+                f"{region} should feel it first through front-end rates, refinancing costs, and valuation pressure on "
+                f"{asset} over the next {horizon} cycle."
+            )
+        if theme_id == "energy-supply":
+            return (
+                f"{region} is exposed through fuel, shipping, and input-cost sensitivity; watch subsidy pressure, import bills, "
+                f"and energy-intensive sectors over the next {horizon} cycle."
+            )
+        if theme_id == "banking-liquidity":
+            return (
+                f"{region} is exposed through funding conditions and confidence-sensitive balance-sheet channels; watch deposit behavior, "
+                f"wholesale spreads, and credit line usage over the next {horizon} cycle."
+            )
+        if theme_id == "growth-slowdown":
+            return (
+                f"{region} is exposed through slower demand and export sensitivity; watch PMIs, hiring appetite, and cyclicals over "
+                f"the next {horizon} cycle."
+            )
+        if theme_id in {"trade-regulation", "geopolitical-risk"}:
+            return (
+                f"{region} is exposed through cross-border routes, tariff friction, and hedge costs; watch shipping lanes, inventory turns, "
+                f"and FX hedges over the next {horizon} cycle."
+            )
+        return (
+            f"{region} is most exposed through {asset}; monitor funding costs, sector leadership, and event risk over the next {horizon} cycle."
+        )
+
+    def _theme_transmission_chain(self, theme_id: str) -> str:
+        normalized = str(theme_id or "").strip().lower()
+        if normalized in {"inflation-shock", "monetary-policy"}:
+            return "policy repricing -> front-end yields -> USD and funding costs -> equity and credit valuation reset"
+        if normalized == "energy-supply":
+            return "commodity shock -> inflation breakevens -> shipping and input costs -> import-sensitive FX and spread widening"
+        if normalized == "banking-liquidity":
+            return "wholesale funding stress -> tighter credit creation -> refinancing premia -> risk-asset de-rating"
+        if normalized in {"trade-regulation", "geopolitical-risk"}:
+            return "route or tariff disruption -> inventory and margin pressure -> FX hedging demand -> higher volatility premia"
+        if normalized == "growth-slowdown":
+            return "weaker demand -> softer cyclicals and trade volumes -> lower policy expectations -> selective credit stress"
+        return "headline pressure -> rates, FX, and credit repricing"
+
+    def _portfolio_specific_edge(self, *, profile_id: str, theme_id: str) -> str:
+        normalized_profile = str(profile_id or "").strip().lower()
+        normalized_theme = str(theme_id or "").strip().lower()
+
+        if normalized_profile == "fintech_lender" and normalized_theme in {"inflation-shock", "monetary-policy", "banking-liquidity"}:
+            return "Funding tends to tighten before borrower stress is obvious, so warehouse pricing is the earlier warning signal."
+        if normalized_profile == "retail_bank" and normalized_theme in {"inflation-shock", "monetary-policy"}:
+            return "Deposit beta and mortgage affordability usually move before loan growth or losses fully show up."
+        if normalized_profile == "global_treasury" and normalized_theme in {"energy-supply", "trade-regulation", "geopolitical-risk"}:
+            return "FX and input-cost volatility can hit cash planning before earnings guidance catches up."
+        if normalized_profile == "canadian_pension" and normalized_theme in {"inflation-shock", "energy-supply"}:
+            return "Real rates and inflation linkage matter more than headline beta for the first allocation decision."
+        if normalized_profile == "multi_asset_fund":
+            return "The edge is acting before the cross-asset transmission gets fully reflected in duration, FX, and credit together."
+        return "The early edge is usually in the second-order transmission channel, not in the headline itself."
+
+    def _navigator_watchlist(
+        self,
+        *,
+        top_theme: NavigatorThemeInsight | None,
+        second_theme: NavigatorThemeInsight | None,
+        source_items: list[NavigatorSourceItem],
+        portfolio_twin: NavigatorPortfolioTwin,
+        decision_artifact: NavigatorDecisionArtifact,
+    ) -> list[str]:
+        top_theme_id = str(getattr(top_theme, "theme_id", "") or "").strip().lower()
+        escalation = {
+            "inflation-shock": "Escalate if front-end yields keep rising while credit spreads widen.",
+            "monetary-policy": "Escalate if policy-sensitive rates and funding spreads both move higher together.",
+            "energy-supply": "Escalate if oil, shipping costs, and breakevens all stay elevated together.",
+            "banking-liquidity": "Escalate if wholesale funding spreads widen and confidence-sensitive outflows build.",
+            "trade-regulation": "Escalate if tariff headlines start showing up in FX hedging demand and margin warnings.",
+            "geopolitical-risk": "Escalate if route disruptions spread into commodity volatility and credit hedging demand.",
+            "growth-slowdown": "Escalate if PMIs weaken further while cyclical credit starts underperforming.",
+        }.get(top_theme_id, "Escalate if rates, FX, and credit begin moving in the same defensive direction.")
+        relief = {
+            "inflation-shock": "Lean in only if yields stabilize and duration-sensitive assets stop repricing lower.",
+            "monetary-policy": "Lean in only if policy guidance softens without a funding scare.",
+            "energy-supply": "Lean in only if energy prices cool and inflation pass-through stops broadening.",
+            "banking-liquidity": "Lean in only if funding spreads normalize and liquidity pressure stops broadening.",
+            "trade-regulation": "Lean in only if supply-chain headlines stop worsening and FX volatility cools.",
+            "geopolitical-risk": "Lean in only if event risk cools without a fresh commodity spike.",
+            "growth-slowdown": "Lean in only if growth data stabilizes before spreads start forcing a harder defensive turn.",
+        }.get(top_theme_id, "Lean in only if cross-asset spillovers stop broadening.")
+
+        checklist_item = decision_artifact.action_checklist[0] if decision_artifact.action_checklist else (
+            portfolio_twin.defensive_moves[0] if portfolio_twin.defensive_moves else "Raise monitoring cadence immediately."
+        )
+        source_tape = ", ".join(sorted({item.source for item in source_items[:3]})) if source_items else "No strong source tape yet"
+        watch_lines = [
+            checklist_item,
+            escalation,
+            relief,
+            f"Keep {source_tape} on the top of the source tape while {top_theme.label.lower() if top_theme else 'the current theme'} stays active.",
+        ]
+        if second_theme:
+            watch_lines.insert(1, f"Watch {second_theme.label.lower()} as the most likely secondary amplifier.")
+        return watch_lines[:4]
+
+    def _format_region_label(self, value: str) -> str:
+        parts = [chunk for chunk in str(value or "").replace("_", " ").split() if chunk]
+        if not parts:
+            return "Primary Region"
+        return " ".join(part.capitalize() for part in parts)
+
+    def _clip_text(self, value: str, max_chars: int) -> str:
+        text = re.sub(r"\s+", " ", str(value or "").strip())
+        if len(text) <= max_chars:
+            return text
+        return text[: max_chars - 3].rstrip(" ,.;:") + "..."
 
     def _highlight_explanation(
         self,

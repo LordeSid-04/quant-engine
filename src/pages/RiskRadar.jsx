@@ -4,11 +4,11 @@ import { useQuery } from "@tanstack/react-query";
 import RadialRiskChart from "../components/radar/RadialRiskChart";
 import RiskSummaryCards from "../components/radar/RiskSummaryCards";
 import { SectionHeading, SurfaceCard } from "@/components/premium/SurfaceCard";
-import { fetchRiskRadar, getCachedRiskRadar } from "@/api/atlasClient";
+import { describeApiError, fetchRiskRadar, getCachedRiskRadar } from "@/api/atlasClient";
 
 export default function RiskRadar() {
   const cachedRisk = getCachedRiskRadar();
-  const { data, isError } = useQuery({
+  const { data, isError, error } = useQuery({
     queryKey: ["risk-radar-live"],
     queryFn: fetchRiskRadar,
     initialData: cachedRisk || undefined,
@@ -37,7 +37,7 @@ export default function RiskRadar() {
           </div>
           <RadialRiskChart categories={data?.categories ?? []} />
         </SurfaceCard>
-        {isError ? <div className="text-xs text-rose-300">Failed to load risk radar data.</div> : null}
+        {isError ? <div className="text-xs text-rose-300">{describeApiError(error, "Could not load risk radar data.")}</div> : null}
 
         <SurfaceCard tone="soft" className="flex items-start gap-3 rounded-xl p-4">
           <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-zinc-200" />
